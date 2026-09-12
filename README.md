@@ -330,11 +330,14 @@ Please review the source and repository history for the exact licensing and attr
 
 ## Author
 
-**Siam Ahmed**
+**Md. Siam Ahmed**
 
 GitHub: [@siam35862](https://github.com/siam35862)
 
 Repository: [siam35862/PAQ9-CUDA](https://github.com/siam35862/PAQ9-CUDA)
+
+**Kazi Rifat Morshed**
+
 
 ---
 
