@@ -1802,6 +1802,7 @@ char *get_input(std::istream &source, int size)
 }
 void decompress(const char *destination_file, const char *source_file)
 {
+    std::cout<<"Decompression is cooking......"<<endl;
 
     constexpr size_t MB = 1024 * 1024;
 
@@ -2225,6 +2226,7 @@ int main(int argc, char **args)
     std::cout << "Time Taken: "
               << seconds << " seconds\n";
     std::cout << "Compression/Decompression Speed: " << total_uncompressed_size / seconds / 1024 << " KB/seconds \n";
+
 
     return 0;
 }
