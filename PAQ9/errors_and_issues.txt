@@ -410,3 +410,441 @@ Executed in  449.75 millis    fish           external
    sys time  360.83 millis  706.00 micros  360.12 millis
 
 noobcod3r-rtx@noobcod3r-rtx ~/D/G/C/P/PAQ9 (main)>
+
+
+
+
+
+
+
+
+
+
+
+
+
+---------------------------------------------------------------
+
+
+
+
+
+
+03.52 PM - 12/09/2026
+
+
+
+Welcome to fish, the friendly interactive shell
+Type help for instructions on how to use fish
+noobcod3r-rtx@noobcod3r-rtx ~/D/G/C/P/PAQ9 (kazi). time ./paq9-cuda -c enwik8.paq9 -1 "/home/noobcod3r-rtx/Downloads/enwik8"
+CUDA version of PAQ9 started successfully.
+
+Memory Chunk Size: 1MB
+ Memory Level 1
+ Level: 1
+Number of Chunks: 96
+Total Size: 95.3674 MB
+Chunk Size: 1 MB
+Assigned block: 1
+Assigned threads: 96
+Total threads: 96
+Thread No: 64 :-HashTable<16> 99.6037% full,                                                           39.9982% utilized of 4096 KiB
+Thread No: 65 :-HashTable<16> 99.6212% full,                                                           39.8262% utilized of 4096 KiB
+Thread No: 66 :-HashTable<16> 99.6090% full,                                                           40.0368% utilized of 4096 KiB
+Thread No: 67 :-HashTable<16> 99.6159% full,                                                           39.8946% utilized of 4096 KiB
+Thread No: 68 :-HashTable<16> 99.5975% full,                                                           39.8312% utilized of 4096 KiB
+Thread No: 69 :-HashTable<16> 99.5949% full,                                                           39.8453% utilized of 4096 KiB
+Thread No: 70 :-HashTable<16> 99.6040% full,                                                           39.8328% utilized of 4096 KiB
+Thread No: 71 :-HashTable<16> 99.5888% full,                                                           39.9044% utilized of 4096 KiB
+Thread No: 72 :-HashTable<16> 99.6254% full,                                                           39.6624% utilized of 4096 KiB
+Thread No: 73 :-HashTable<16> 99.5892% full,                                                           39.6309% utilized of 4096 KiB
+Thread No: 74 :-HashTable<16> 99.6113% full,                                                           39.9502% utilized of 4096 KiB
+Thread No: 75 :-HashTable<16> 99.6090% full,                                                           39.7588% utilized of 4096 KiB
+Thread No: 76 :-HashTable<16> 99.6071% full,                                                           40.0610% utilized of 4096 KiB
+Thread No: 77 :-HashTable<16> 99.6124% full,                                                           39.8424% utilized of 4096 KiB
+Thread No: 78 :-HashTable<16> 99.6052% full,                                                           39.9375% utilized of 4096 KiB
+Thread No: 79 :-HashTable<16> 99.6128% full,                                                           39.6841% utilized of 4096 KiB
+Thread No: 80 :-HashTable<16> 99.6021% full, 39.7192% utilized of 4096 KiB
+Thread No: 81 :-HashTable<16> 99.5968% full, 39.8324% utilized of 4096 KiB
+Thread No: 82 :-HashTable<16> 99.5949% full, 39.8410% utilized of 4096 KiB
+Thread No: 83 :-HashTable<16> 99.5934% full, 39.7530% utilized of 4096 KiB
+Thread No: 84 :-HashTable<16> 99.6105% full, 39.8263% utilized of 4096 KiB
+Thread No: 85 :-HashTable<16> 99.5960% full, 39.7877% utilized of 4096 KiB
+Thread No: 86 :-HashTable<16> 99.5991% full, 39.8345% utilized of 4096 KiB
+Thread No: 87 :-HashTable<16> 99.6029% full, 39.6626% utilized of 4096 KiB
+Thread No: 88 :-HashTable<16> 99.6109% full, 39.8118% utilized of 4096 KiB
+Thread No: 89 :-HashTable<16> 99.6105% full, 39.6848% utilized of 4096 KiB
+Thread No: 90 :-HashTable<16> 99.5953% full, 39.7201% utilized of 4096 KiB
+Thread No: 91 :-HashTable<16> 99.6002% full, 39.7424% utilized of 4096 KiB
+Thread No: 92 :-HashTable<16> 99.6113% full, 39.3860% utilized of 4096 KiB
+Thread No: 93 :-HashTable<16> 99.6056% full, 39.6845% utilized of 4096 KiB
+Thread No: 94 :-HashTable<16> 99.6178% full, 39.6873% utilized of 4096 KiB
+Thread No: 95 :-HashTable<16> 99.5918% full, 37.1026% utilized of 4096 KiB
+Thread No: 64 :- LZP hash table 84.3521% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 65 :- LZP hash table 83.4869% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 66 :- LZP hash table 84.4200% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 67 :- LZP hash table 84.3719% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 68 :- LZP hash table 81.2737% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 69 :- LZP hash table 84.0111% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 70 :- LZP hash table 84.4826% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 71 :- LZP hash table 83.5255% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 72 :- LZP hash table 83.4095% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 73 :- LZP hash table 83.1291% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 74 :- LZP hash table 84.6287% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 75 :- LZP hash table 83.6735% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 76 :- LZP hash table 84.7736% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 77 :- LZP hash table 84.4177% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 78 :- LZP hash table 84.6107% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 79 :- LZP hash table 83.0181% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 80 :- LZP hash table 83.1547% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 81 :- LZP hash table 84.0134% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 82 :- LZP hash table 84.3254% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 83 :- LZP hash table 83.9264% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 84 :- LZP hash table 84.0080% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 85 :- LZP hash table 84.1953% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 86 :- LZP hash table 84.0298% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 87 :- LZP hash table 83.2249% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 88 :- LZP hash table 83.5247% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 89 :- LZP hash table 83.1799% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 90 :- LZP hash table 83.2710% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 91 :- LZP hash table 83.8848% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 92 :- LZP hash table 80.7320% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 93 :- LZP hash table 82.9670% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 94 :- LZP hash table 82.9243% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 95 :- LZP hash table 56.4430% full of 1024 KiB    LZP buffer 36.7432% full of 1024 KiB
+Thread No: 64 :- LZP 926966 literals, 121610 matches (11.5976% matched)
+Thread No: 65 :- LZP 886760 literals, 161816 matches (15.4320% matched)
+Thread No: 66 :- LZP 919763 literals, 128813 matches (12.2846% matched)
+Thread No: 67 :- LZP 897552 literals, 151024 matches (14.4028% matched)
+Thread No: 68 :- LZP 845491 literals, 203085 matches (19.3677% matched)
+Thread No: 69 :- LZP 905838 literals, 142738 matches (13.6126% matched)
+Thread No: 70 :- LZP 922837 literals, 125739 matches (11.9914% matched)
+Thread No: 71 :- LZP 895623 literals, 152953 matches (14.5867% matched)
+Thread No: 72 :- LZP 897770 literals, 150806 matches (14.3820% matched)
+Thread No: 73 :- LZP 889864 literals, 158712 matches (15.1360% matched)
+Thread No: 74 :- LZP 913724 literals, 134852 matches (12.8605% matched)
+Thread No: 75 :- LZP 913657 literals, 134919 matches (12.8669% matched)
+Thread No: 76 :- LZP 918380 literals, 130196 matches (12.4165% matched)
+Thread No: 77 :- LZP 909068 literals, 139508 matches (13.3045% matched)
+Thread No: 78 :- LZP 912386 literals, 136190 matches (12.9881% matched)
+Thread No: 79 :- LZP 910278 literals, 138298 matches (13.1891% matched)
+Thread No: 80 :- LZP 897599 literals, 150977 matches (14.3983% matched)
+Thread No: 81 :- LZP 943784 literals, 104792 matches (9.9937% matched)
+Thread No: 82 :- LZP 926793 literals, 121783 matches (11.6141% matched)
+Thread No: 83 :- LZP 927400 literals, 121176 matches (11.5562% matched)
+Thread No: 84 :- LZP 933353 literals, 115223 matches (10.9885% matched)
+Thread No: 85 :- LZP 933478 literals, 115098 matches (10.9766% matched)
+Thread No: 86 :- LZP 919203 literals, 129373 matches (12.3380% matched)
+Thread No: 87 :- LZP 892436 literals, 156140 matches (14.8907% matched)
+Thread No: 88 :- LZP 911703 literals, 136873 matches (13.0532% matched)
+Thread No: 89 :- LZP 910354 literals, 138222 matches (13.1819% matched)
+Thread No: 90 :- LZP 886591 literals, 161985 matches (15.4481% matched)
+Thread No: 91 :- LZP 915788 literals, 132788 matches (12.6637% matched)
+Thread No: 92 :- LZP 802005 literals, 246571 matches (23.5148% matched)
+Thread No: 93 :- LZP 895350 literals, 153226 matches (14.6128% matched)
+Thread No: 94 :- LZP 894360 literals, 154216 matches (14.7072% matched)
+Thread No: 95 :- LZP 342947 literals, 42333 matches (10.9876% matched)
+Thread No: 0 :-HashTable<16> 99.6105% full, 39.5858% utilized of 4096 KiB
+Thread No: 1 :-HashTable<16> 99.6105% full, 39.8972% utilized of 4096 KiB
+Thread No: 2 :-HashTable<16> 99.6132% full, 39.8546% utilized of 4096 KiB
+Thread No: 3 :-HashTable<16> 99.6082% full, 39.8134% utilized of 4096 KiB
+Thread No: 4 :-HashTable<16> 99.5892% full, 39.8760% utilized of 4096 KiB
+Thread No: 5 :-HashTable<16> 99.5926% full, 39.8829% utilized of 4096 KiB
+Thread No: 6 :-HashTable<16> 99.5918% full, 39.9711% utilized of 4096 KiB
+Thread No: 7 :-HashTable<16> 99.6155% full, 39.8514% utilized of 4096 KiB
+Thread No: 8 :-HashTable<16> 99.5964% full, 39.8669% utilized of 4096 KiB
+Thread No: 9 :-HashTable<16> 99.6071% full, 39.8549% utilized of 4096 KiB
+Thread No: 10 :-HashTable<16> 99.5956% full, 39.8821% utilized of 4096 KiB
+Thread No: 11 :-HashTable<16> 99.5964% full, 40.0376% utilized of 4096 KiB
+Thread No: 12 :-HashTable<16> 99.6132% full, 39.9869% utilized of 4096 KiB
+Thread No: 13 :-HashTable<16> 99.6109% full, 39.7672% utilized of 4096 KiB
+Thread No: 14 :-HashTable<16> 99.6071% full, 39.8900% utilized of 4096 KiB
+Thread No: 15 :-HashTable<16> 99.6029% full, 39.7941% utilized of 4096 KiB
+Thread No: 16 :-HashTable<16> 99.6082% full, 39.7331% utilized of 4096 KiB
+Thread No: 17 :-HashTable<16> 99.6262% full, 40.0415% utilized of 4096 KiB
+Thread No: 18 :-HashTable<16> 99.6071% full, 39.2317% utilized of 4096 KiB
+Thread No: 19 :-HashTable<16> 99.6113% full, 39.8552% utilized of 4096 KiB
+Thread No: 20 :-HashTable<16> 99.5975% full, 39.6820% utilized of 4096 KiB
+Thread No: 21 :-HashTable<16> 99.6059% full, 39.8347% utilized of 4096 KiB
+Thread No: 22 :-HashTable<16> 99.6273% full, 39.8723% utilized of 4096 KiB
+Thread No: 23 :-HashTable<16> 99.6105% full, 39.7738% utilized of 4096 KiB
+Thread No: 24 :-HashTable<16> 99.6147% full, 39.7548% utilized of 4096 KiB
+Thread No: 25 :-HashTable<16> 99.6117% full, 40.0024% utilized of 4096 KiB
+Thread No: 26 :-HashTable<16> 99.6254% full, 39.7380% utilized of 4096 KiB
+Thread No: 27 :-HashTable<16> 99.6086% full, 39.8544% utilized of 4096 KiB
+Thread No: 28 :-HashTable<16> 99.6082% full, 39.6875% utilized of 4096 KiB
+Thread No: 29 :-HashTable<16> 99.6040% full, 39.6775% utilized of 4096 KiB
+Thread No: 30 :-HashTable<16> 99.6113% full, 39.6356% utilized of 4096 KiB
+Thread No: 31 :-HashTable<16> 99.5865% full, 39.3235% utilized of 4096 KiB
+Thread No: 0 :- LZP hash table 82.5722% full of 1024 KiB     LZP buffer 100.0000% full of 1024 KiB
+Thread No: 1 :- LZP hash table 84.0210% full of 1024 KiB     LZP buffer 100.0000% full of 1024 KiB
+Thread No: 2 :- LZP hash table 83.9996% full of 1024 KiB     LZP buffer 100.0000% full of 1024 KiB
+Thread No: 3 :- LZP hash table 84.0065% full of 1024 KiB     LZP buffer 100.0000% full of 1024 KiB
+Thread No: 4 :- LZP hash table 83.3225% full of 1024 KiB     LZP buffer 100.0000% full of 1024 KiB
+Thread No: 5 :- LZP hash table 83.9039% full of 1024 KiB     LZP buffer 100.0000% full of 1024 KiB
+Thread No: 6 :- LZP hash table 84.2911% full of 1024 KiB     LZP buffer 100.0000% full of 1024 KiB
+Thread No: 7 :- LZP hash table 82.7595% full of 1024 KiB     LZP buffer 100.0000% full of 1024 KiB
+Thread No: 8 :- LZP hash table 83.1806% full of 1024 KiB     LZP buffer 100.0000% full of 1024 KiB
+Thread No: 9 :- LZP hash table 84.2327% full of 1024 KiB     LZP buffer 100.0000% full of 1024 KiB
+Thread No: 10 :- LZP hash table 84.2617% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 11 :- LZP hash table 83.8821% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 12 :- LZP hash table 84.5695% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 13 :- LZP hash table 83.3656% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 14 :- LZP hash table 84.4414% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 15 :- LZP hash table 84.0618% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 16 :- LZP hash table 83.7410% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 17 :- LZP hash table 84.9449% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 18 :- LZP hash table 80.0850% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 19 :- LZP hash table 83.6647% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 20 :- LZP hash table 82.8377% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 21 :- LZP hash table 84.3185% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 22 :- LZP hash table 84.2236% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 23 :- LZP hash table 84.0134% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 24 :- LZP hash table 83.8070% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 25 :- LZP hash table 84.8423% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 26 :- LZP hash table 84.0279% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 27 :- LZP hash table 84.5703% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 28 :- LZP hash table 82.9025% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 29 :- LZP hash table 83.4095% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 30 :- LZP hash table 83.3237% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 31 :- LZP hash table 80.9452% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 0 :- LZP 882159 literals, 166417 matches (15.8708% matched)
+Thread No: 1 :- LZP 911926 literals, 136650 matches (13.0320% matched)
+Thread No: 2 :- LZP 923484 literals, 125092 matches (11.9297% matched)
+Thread No: 3 :- LZP 902681 literals, 145895 matches (13.9136% matched)
+Thread No: 4 :- LZP 898558 literals, 150018 matches (14.3068% matched)
+Thread No: 5 :- LZP 918664 literals, 129912 matches (12.3894% matched)
+Thread No: 6 :- LZP 922187 literals, 126389 matches (12.0534% matched)
+Thread No: 7 :- LZP 899967 literals, 148609 matches (14.1725% matched)
+Thread No: 8 :- LZP 885195 literals, 163381 matches (15.5812% matched)
+Thread No: 9 :- LZP 902556 literals, 146020 matches (13.9256% matched)
+Thread No: 10 :- LZP 924874 literals, 123702 matches (11.7971% matched)
+Thread No: 11 :- LZP 902701 literals, 145875 matches (13.9117% matched)
+Thread No: 12 :- LZP 925835 literals, 122741 matches (11.7055% matched)
+Thread No: 13 :- LZP 899247 literals, 149329 matches (14.2411% matched)
+Thread No: 14 :- LZP 905326 literals, 143250 matches (13.6614% matched)
+Thread No: 15 :- LZP 912180 literals, 136396 matches (13.0077% matched)
+Thread No: 16 :- LZP 906689 literals, 141887 matches (13.5314% matched)
+Thread No: 17 :- LZP 926972 literals, 121604 matches (11.5971% matched)
+Thread No: 18 :- LZP 822975 literals, 225601 matches (21.5150% matched)
+Thread No: 19 :- LZP 895812 literals, 152764 matches (14.5687% matched)
+Thread No: 20 :- LZP 875054 literals, 173522 matches (16.5483% matched)
+Thread No: 21 :- LZP 914672 literals, 133904 matches (12.7701% matched)
+Thread No: 22 :- LZP 921905 literals, 126671 matches (12.0803% matched)
+Thread No: 23 :- LZP 924621 literals, 123955 matches (11.8213% matched)
+Thread No: 24 :- LZP 911761 literals, 136815 matches (13.0477% matched)
+Thread No: 25 :- LZP 924912 literals, 123664 matches (11.7935% matched)
+Thread No: 26 :- LZP 912758 literals, 135818 matches (12.9526% matched)
+Thread No: 27 :- LZP 929166 literals, 119410 matches (11.3878% matched)
+Thread No: 28 :- LZP 855934 literals, 192642 matches (18.3718% matched)
+Thread No: 29 :- LZP 918395 literals, 130181 matches (12.4150% matched)
+Thread No: 30 :- LZP 901376 literals, 147200 matches (14.0381% matched)
+Thread No: 31 :- LZP 844711 literals, 203865 matches (19.4421% matched)
+Thread No: 32 :-HashTable<16> 99.5991% full, 39.7903% utilized of 4096 KiB
+Thread No: 33 :-HashTable<16> 99.6033% full, 39.8870% utilized of 4096 KiB
+Thread No: 34 :-HashTable<16> 99.6075% full, 39.6875% utilized of 4096 KiB
+Thread No: 35 :-HashTable<16> 99.6040% full, 39.7314% utilized of 4096 KiB
+Thread No: 36 :-HashTable<16> 99.6033% full, 39.7527% utilized of 4096 KiB
+Thread No: 37 :-HashTable<16> 99.6040% full, 39.7955% utilized of 4096 KiB
+Thread No: 38 :-HashTable<16> 99.6243% full, 39.6850% utilized of 4096 KiB
+Thread No: 39 :-HashTable<16> 99.5876% full, 40.2219% utilized of 4096 KiB
+Thread No: 40 :-HashTable<16> 99.6002% full, 39.7917% utilized of 4096 KiB
+Thread No: 41 :-HashTable<16> 99.6075% full, 39.8763% utilized of 4096 KiB
+Thread No: 42 :-HashTable<16> 99.6124% full, 39.7376% utilized of 4096 KiB
+Thread No: 43 :-HashTable<16> 99.6197% full, 39.7028% utilized of 4096 KiB
+Thread No: 44 :-HashTable<16> 99.6101% full, 39.6695% utilized of 4096 KiB
+Thread No: 45 :-HashTable<16> 99.6166% full, 39.7763% utilized of 4096 KiB
+Thread No: 46 :-HashTable<16> 99.6105% full, 39.7592% utilized of 4096 KiB
+Thread No: 47 :-HashTable<16> 99.6002% full, 39.7295% utilized of 4096 KiB
+Thread No: 48 :-HashTable<16> 99.6162% full, 40.0177% utilized of 4096 KiB
+Thread No: 49 :-HashTable<16> 99.6201% full, 39.8475% utilized of 4096 KiB
+Thread No: 50 :-HashTable<16> 99.6162% full, 39.9735% utilized of 4096 KiB
+Thread No: 51 :-HashTable<16> 99.6140% full, 39.9742% utilized of 4096 KiB
+Thread No: 52 :-HashTable<16> 99.6117% full, 39.8739% utilized of 4096 KiB
+Thread No: 53 :-HashTable<16> 99.5865% full, 39.9131% utilized of 4096 KiB
+Thread No: 54 :-HashTable<16> 99.6132% full, 39.7769% utilized of 4096 KiB
+Thread No: 55 :-HashTable<16> 99.6086% full, 39.5084% utilized of 4096 KiB
+Thread No: 56 :-HashTable<16> 99.6151% full, 39.9138% utilized of 4096 KiB
+Thread No: 57 :-HashTable<16> 99.6029% full, 39.6085% utilized of 4096 KiB
+Thread No: 58 :-HashTable<16> 99.6201% full, 39.9586% utilized of 4096 KiB
+Thread No: 59 :-HashTable<16> 99.6052% full, 39.8263% utilized of 4096 KiB
+Thread No: 60 :-HashTable<16> 99.5960% full, 39.6888% utilized of 4096 KiB
+Thread No: 61 :-HashTable<16> 99.5956% full, 39.8747% utilized of 4096 KiB
+Thread No: 62 :-HashTable<16> 99.6048% full, 39.8334% utilized of 4096 KiB
+Thread No: 63 :-HashTable<16> 99.6174% full, 39.7406% utilized of 4096 KiB
+Thread No: 32 :- LZP hash table 83.7326% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 33 :- LZP hash table 84.1061% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 34 :- LZP hash table 83.8020% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 35 :- LZP hash table 83.7498% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 36 :- LZP hash table 83.5331% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 37 :- LZP hash table 83.6906% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 38 :- LZP hash table 81.9714% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 39 :- LZP hash table 85.0712% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 40 :- LZP hash table 84.3128% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 41 :- LZP hash table 84.3655% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 42 :- LZP hash table 82.9395% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 43 :- LZP hash table 83.7025% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 44 :- LZP hash table 83.1692% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 45 :- LZP hash table 83.9027% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 46 :- LZP hash table 83.6197% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 47 :- LZP hash table 83.7471% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 48 :- LZP hash table 84.2815% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 49 :- LZP hash table 84.0214% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 50 :- LZP hash table 84.8015% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 51 :- LZP hash table 84.5985% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 52 :- LZP hash table 84.1122% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 53 :- LZP hash table 84.3014% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 54 :- LZP hash table 83.4324% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 55 :- LZP hash table 82.0896% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 56 :- LZP hash table 83.9512% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 57 :- LZP hash table 83.0734% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 58 :- LZP hash table 84.4379% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 59 :- LZP hash table 83.8051% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 60 :- LZP hash table 83.3233% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 61 :- LZP hash table 84.4227% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 62 :- LZP hash table 83.2508% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 63 :- LZP hash table 83.0132% full of 1024 KiB    LZP buffer 100.0000% full of 1024 KiB
+Thread No: 32 :- LZP 908287 literals, 140289 matches (13.3790% matched)
+Thread No: 33 :- LZP 914112 literals, 134464 matches (12.8235% matched)
+Thread No: 34 :- LZP 914146 literals, 134430 matches (12.8202% matched)
+Thread No: 35 :- LZP 922540 literals, 126036 matches (12.0197% matched)
+Thread No: 36 :- LZP 910182 literals, 138394 matches (13.1983% matched)
+Thread No: 37 :- LZP 889384 literals, 159192 matches (15.1817% matched)
+Thread No: 38 :- LZP 845996 literals, 202580 matches (19.3195% matched)
+Thread No: 39 :- LZP 900337 literals, 148239 matches (14.1372% matched)
+Thread No: 40 :- LZP 921576 literals, 127000 matches (12.1117% matched)
+Thread No: 41 :- LZP 921328 literals, 127248 matches (12.1353% matched)
+Thread No: 42 :- LZP 871388 literals, 177188 matches (16.8980% matched)
+Thread No: 43 :- LZP 924338 literals, 124238 matches (11.8483% matched)
+Thread No: 44 :- LZP 919774 literals, 128802 matches (12.2835% matched)
+Thread No: 45 :- LZP 912920 literals, 135656 matches (12.9372% matched)
+Thread No: 46 :- LZP 916656 literals, 131920 matches (12.5809% matched)
+Thread No: 47 :- LZP 883537 literals, 165039 matches (15.7393% matched)
+Thread No: 48 :- LZP 911627 literals, 136949 matches (13.0605% matched)
+Thread No: 49 :- LZP 900894 literals, 147682 matches (14.0841% matched)
+Thread No: 50 :- LZP 926990 literals, 121586 matches (11.5953% matched)
+Thread No: 51 :- LZP 909487 literals, 139089 matches (13.2646% matched)
+Thread No: 52 :- LZP 919632 literals, 128944 matches (12.2971% matched)
+Thread No: 53 :- LZP 916454 literals, 132122 matches (12.6001% matched)
+Thread No: 54 :- LZP 905067 literals, 143509 matches (13.6861% matched)
+Thread No: 55 :- LZP 884223 literals, 164353 matches (15.6739% matched)
+Thread No: 56 :- LZP 910201 literals, 138375 matches (13.1965% matched)
+Thread No: 57 :- LZP 901293 literals, 147283 matches (14.0460% matched)
+Thread No: 58 :- LZP 916961 literals, 131615 matches (12.5518% matched)
+Thread No: 59 :- LZP 904394 literals, 144182 matches (13.7503% matched)
+Thread No: 60 :- LZP 922324 literals, 126252 matches (12.0403% matched)
+Thread No: 61 :- LZP 910729 literals, 137847 matches (13.1461% matched)
+Thread No: 62 :- LZP 871279 literals, 177297 matches (16.9084% matched)
+Thread No: 63 :- LZP 881723 literals, 166853 matches (15.9123% matched)
+Uncompressed  ->  Compressed
+1048576 Byte -> 245899 Byte
+1048576 Byte -> 260284 Byte
+1048576 Byte -> 261883 Byte
+1048576 Byte -> 258774 Byte
+1048576 Byte -> 258437 Byte
+1048576 Byte -> 263163 Byte
+1048576 Byte -> 266918 Byte
+1048576 Byte -> 259516 Byte
+1048576 Byte -> 257301 Byte
+1048576 Byte -> 261469 Byte
+1048576 Byte -> 264692 Byte
+1048576 Byte -> 261566 Byte
+1048576 Byte -> 268061 Byte
+1048576 Byte -> 257467 Byte
+1048576 Byte -> 263125 Byte
+1048576 Byte -> 263941 Byte
+1048576 Byte -> 259595 Byte
+1048576 Byte -> 269254 Byte
+1048576 Byte -> 229789 Byte
+1048576 Byte -> 256030 Byte
+1048576 Byte -> 246015 Byte
+1048576 Byte -> 261289 Byte
+1048576 Byte -> 262151 Byte
+1048576 Byte -> 263333 Byte
+1048576 Byte -> 258445 Byte
+1048576 Byte -> 267832 Byte
+1048576 Byte -> 261245 Byte
+1048576 Byte -> 266771 Byte
+1048576 Byte -> 245516 Byte
+1048576 Byte -> 256283 Byte
+1048576 Byte -> 252213 Byte
+1048576 Byte -> 238651 Byte
+1048576 Byte -> 256649 Byte
+1048576 Byte -> 258637 Byte
+1048576 Byte -> 258278 Byte
+1048576 Byte -> 258045 Byte
+1048576 Byte -> 258015 Byte
+1048576 Byte -> 253942 Byte
+1048576 Byte -> 238305 Byte
+1048576 Byte -> 263527 Byte
+1048576 Byte -> 265080 Byte
+1048576 Byte -> 263183 Byte
+1048576 Byte -> 249669 Byte
+1048576 Byte -> 261030 Byte
+1048576 Byte -> 256900 Byte
+1048576 Byte -> 260692 Byte
+1048576 Byte -> 258559 Byte
+1048576 Byte -> 252513 Byte
+1048576 Byte -> 261958 Byte
+1048576 Byte -> 258029 Byte
+1048576 Byte -> 268213 Byte
+1048576 Byte -> 265281 Byte
+1048576 Byte -> 263055 Byte
+1048576 Byte -> 262725 Byte
+1048576 Byte -> 255181 Byte
+1048576 Byte -> 248190 Byte
+1048576 Byte -> 261385 Byte
+1048576 Byte -> 252940 Byte
+1048576 Byte -> 263165 Byte
+1048576 Byte -> 260235 Byte
+1048576 Byte -> 259040 Byte
+1048576 Byte -> 263337 Byte
+1048576 Byte -> 249166 Byte
+1048576 Byte -> 250736 Byte
+1048576 Byte -> 263775 Byte
+1048576 Byte -> 254715 Byte
+1048576 Byte -> 265949 Byte
+1048576 Byte -> 258545 Byte
+1048576 Byte -> 223811 Byte
+1048576 Byte -> 259136 Byte
+1048576 Byte -> 265135 Byte
+1048576 Byte -> 251613 Byte
+1048576 Byte -> 254639 Byte
+1048576 Byte -> 253921 Byte
+1048576 Byte -> 264142 Byte
+1048576 Byte -> 260070 Byte
+1048576 Byte -> 266361 Byte
+1048576 Byte -> 262812 Byte
+1048576 Byte -> 265294 Byte
+1048576 Byte -> 256321 Byte
+1048576 Byte -> 253905 Byte
+1048576 Byte -> 266886 Byte
+1048576 Byte -> 264429 Byte
+1048576 Byte -> 261079 Byte
+1048576 Byte -> 265120 Byte
+1048576 Byte -> 266442 Byte
+1048576 Byte -> 263632 Byte
+1048576 Byte -> 253822 Byte
+1048576 Byte -> 259694 Byte
+1048576 Byte -> 257000 Byte
+1048576 Byte -> 250649 Byte
+1048576 Byte -> 258585 Byte
+1048576 Byte -> 226381 Byte
+1048576 Byte -> 252996 Byte
+1048576 Byte -> 251773 Byte
+385280 Byte -> 99465 Byte
+Total: 100000000 Byte -> 24600665 Byte
+Compression Ratio: 4.06493
+Time Taken: 426.695 seconds
+Compression/Decompression Speed: 228.866 KB/seconds
+
+________________________________________________________
+Executed in  426.86 secs    fish           external
+   usr time  422.78 secs    0.00 micros  422.78 secs
+   sys time    1.70 secs  923.00 micros    1.69 secs
+
+
+
+
+
+
