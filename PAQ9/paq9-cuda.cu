@@ -1839,7 +1839,7 @@ void decompress(const char *destination_file, const char *source_file)
         // std::cout << blocks << " " << threads << std::endl;
 
         // initialize the gpu classes
-        // Heap Resize
+        // Heap Resize hello
         size_t heapSize = 4095U * 1024 * 1024; // 512 MB
         cudaDeviceSetLimit(cudaLimitMallocHeapSize, heapSize);
 
