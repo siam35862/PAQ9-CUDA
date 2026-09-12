@@ -7,26 +7,25 @@
 #include <cstring> // For strlen
 #include <assert.h>
 
-
-//typedef
-// 8, 16, 32 bit unsigned types (adjust as appropriate)
+// typedef
+//  8, 16, 32 bit unsigned types (adjust as appropriate)
 typedef unsigned char U8;
 typedef unsigned short U16;
 typedef unsigned int U32;
 
-//define
+// define
 #define MAX_THREADS 1024
 #define COMPRESS 0
 #define DECOMPRESS 1
-
+#define endl std::endl
 constexpr size_t MB = 1024 * 1024;
 int memory_level = 1;       // default memory level MEM=1<<22+memory_level;
 int memory_chunk_level = 1; // default memory chunks 1MB
 int level = 1;
-int total_uncompressed_size = 0;
-int total_compressed_size = 0;
-int maximumHeapLimit = 8;     // default heap limit
-int maximumFreeMemory = 1024; // default consider 1GB memory has free
+size_t total_uncompressed_size = 0;
+size_t total_compressed_size = 0;
+size_t maximumHeapLimit = 8;     // default heap limit
+size_t maximumFreeMemory = 1024; // default consider 1GB memory has free
 
 __device__ int get_tid()
 {
@@ -621,9 +620,9 @@ class HashTable
     const U32 N;   // size in bytes
 
 public:
-    HashTable(int n);
-    ~HashTable();
-    U8 *operator[](U32 i);
+    __device__ HashTable(int n);
+    __device__ ~HashTable();
+    __device__ U8 *operator[](U32 i);
 };
 
 template <int B>
@@ -1314,29 +1313,58 @@ void put4_stream(U32 c, std::ostream &out)
     out.put(c & 0xFF);
 }
 
-double get_mb_from_n(int n)
+//// Read/write a 8 byte big-endian number from file
+size_t get8_stream(std::istream &in)
+{
+    size_t r = in.get();
+    r = r * 256 + in.get();
+    r = r * 256 + in.get();
+    r = r * 256 + in.get();
+    r = r * 256 + in.get();
+    r = r * 256 + in.get();
+    r = r * 256 + in.get();
+    r = r * 256 + in.get();
+    return r;
+}
+
+void put8_stream(size_t c, std::ostream &out)
+{
+    out.put((c >> 56) & 0xFF);
+    out.put((c >> 48) & 0xFF);
+    out.put((c >> 40) & 0xFF);
+    out.put((c >> 32) & 0xFF);
+    out.put((c >> 24) & 0xFF);
+    out.put((c >> 16) & 0xFF);
+    out.put((c >> 8) & 0xFF);
+    out.put(c & 0xFF);
+}
+
+// Memory Level calculation
+
+size_t getBytesFromMemoryLevel(int n)
 {
     // n বৈধ কিনা চেক
     if (n < 1 || n > 9)
-        return -1.0; // ভুল ইনপুট
+        return SIZE_MAX; // ভুল ইনপুট — unsigned, তাই -1 ব্যবহার করা যাবে না
 
-    long long MEM = 1LL << (22 + n); // MEM = 2^(22+n)
-    long long total_bytes = (long long)(0.75 * MEM) + 13030528LL;
+    size_t MEM = (size_t)1 << (22 + n); // MEM = 2^(22+n)
+    size_t total_bytes = (size_t)(0.75 * MEM) + 13030528ULL;
 
-    return total_bytes / (1024.0 * 1024.0); // বাইট থেকে MiB এ কনভার্ট
+    return total_bytes;
 }
-int get_n_from_mb(double mb)
+
+int getMemoryLevelFromBytes(size_t bytes)
 {
     for (int n = 1; n <= 9; ++n)
     {
-        double threshold = get_mb_from_n(n);
-        if (mb <= threshold)
+        size_t threshold = getBytesFromMemoryLevel(n);
+        if (bytes <= threshold)
             return n;
     }
-    return 9; // mb যদি সর্বোচ্চ থ্রেশহোল্ডও ছাড়িয়ে যায়, সর্বোচ্চ n রিটার্ন
+    return 9; // bytes যদি সর্বোচ্চ থ্রেশহোল্ডও ছাড়িয়ে যায়, সর্বোচ্চ n রিটার্ন
 }
 
-size_t get_maximum_heap_limit()
+size_t getMaximumHeapLimit()
 {
     int deviceCount = 0;
 
@@ -1385,7 +1413,7 @@ size_t get_maximum_heap_limit()
         }
     }
 
-    cudaError_t err = cudaDeviceSetLimit(cudaLimitMallocHeapSize, bestLimit);
+    err = cudaDeviceSetLimit(cudaLimitMallocHeapSize, bestLimit);
 
     if (err != cudaSuccess)
     {
@@ -1395,6 +1423,7 @@ size_t get_maximum_heap_limit()
                       << cudaGetErrorString(err1) << '\n';
         exit(1);
     }
+    return bestLimit;
 }
 
 size_t getMaximumFreeMemory()
@@ -1414,308 +1443,317 @@ size_t getMaximumFreeMemory()
 
 void compress(char *destination_file, char *source_file)
 {
+    std::cout << "Compression cooking........." << endl;
 
-    
+    maximumHeapLimit = getMaximumHeapLimit();
+    maximumFreeMemory = getMaximumFreeMemory();
 
-    memory_chunk_level = (1 << (level - 1));
-    size_t chunk_size = memory_chunk_level * MB;
+    size_t maximumMemory = std::min(maximumFreeMemory, maximumHeapLimit);
+
+    maximumMemory = 8 * maximumMemory / 10;
+
     std::ifstream source(source_file, std::ios::binary);
     if (!source)
     {
-        std::cerr << "Cannot open " << source_file << std::endl;
+        std::cerr << "Cannot open " << source_file << endl;
         exit(1);
     }
     source.seekg(0, std::ios::end);
-    size_t total_size = source.tellg();
-    int total_MB = total_size / MB;
-
-    int n = get_n_from_mb(memory_chunk_level);
-    int mb = get_mb_from_n(n);
-    size_t num_of_chunks =
-        (total_size + chunk_size - 1) / chunk_size;
-    for (int i = level; i <= 11; i++)
-    {
-        memory_chunk_level = (1 << (i - 1));
-        chunk_size = memory_chunk_level * MB;
-        num_of_chunks =
-            (total_size + chunk_size - 1) / chunk_size;
-        int thread = total_MB / memory_chunk_level;
-
-        int needMB = 2.2 * total_MB + thread * get_mb_from_n(get_n_from_mb(memory_chunk_level));
-        if (needMB < 4096)
-        {
-            memory_level = get_n_from_mb(memory_chunk_level);
-            level = i;
-            break;
-        }
-    }
-    std::cout << "Memory Chunk Size: " << memory_chunk_level << "MB\n Memory Level " << memory_level << " \n Level: " << level << std::endl;
-
-    char **src_file = new char *[num_of_chunks];
+    size_t total_B = source.tellg();
     source.clear();
     source.seekg(0, std::ios::beg);
 
-    std::vector<int> input_size(num_of_chunks);
+    memory_chunk_level = (1 << (level - 1));
+    memory_level = getMemoryLevelFromBytes(memory_chunk_level * MB);
+    size_t memoryPerThread = 3.5 * getBytesFromMemoryLevel(memory_level);
 
-    for (size_t i = 0; i < num_of_chunks; i++)
-    {
-        size_t current_size =
-            min(chunk_size, total_size - i * chunk_size);
+    int maximumThreadPerDeviceCall = (maximumMemory + memoryPerThread - 1) / memoryPerThread;
 
-        src_file[i] = new char[current_size];
+    size_t chunk_B = memory_chunk_level * MB;
 
-        source.read(src_file[i], current_size);
-        input_size[i] = current_size;
-    }
-    source.close();
+    // std::cout << memory_chunk_level << " " << memory_level << " " << memoryPerThread << " " << maximumThreadPerDeviceCall << " " << chunk_B << endl;
 
-    std::cout << "Number of Chunks: " << num_of_chunks << std::endl;
-    std::cout << "Total Size: " << 1.0 * total_size / MB << " MB " << std::endl;
-    std::cout << "Chunk Size: " << (1.0 * chunk_size) / MB << " MB " << std::endl;
+    int num_of_chunks =
+        (total_B + chunk_B - 1) / chunk_B;
 
-    // preparing for calling device function
+    int device_call_count = (num_of_chunks + maximumThreadPerDeviceCall - 1) / maximumThreadPerDeviceCall;
 
-    // --------------------------------------------------
-    // Device pointer arrays
-    // --------------------------------------------------
+    // compressed file configuration
 
-    char **d_input;
-    char **d_output;
-
-    cudaMalloc(&d_input, num_of_chunks * sizeof(char *));
-    cudaMalloc(&d_output, num_of_chunks * sizeof(char *));
-
-    // --------------------------------------------------
-    // Size arrays
-    // --------------------------------------------------
-
-    int *d_input_size;
-    int *d_output_size;
-
-    cudaMalloc(&d_input_size,
-               num_of_chunks * sizeof(int));
-
-    cudaMalloc((void **)&d_output_size, num_of_chunks * sizeof(int));
-    // --------------------------------------------------
-    // Copy input sizes: HOST -> DEVICE
-    // --------------------------------------------------
-
-    cudaMemcpy(
-        d_input_size,
-        input_size.data(),
-        num_of_chunks * sizeof(int),
-        cudaMemcpyHostToDevice);
-
-    // --------------------------------------------------
-    // Temporary host arrays containing device pointers
-    // --------------------------------------------------
-
-    char **temp_d_input =
-        new char *[num_of_chunks];
-
-    char **temp_d_output =
-        new char *[num_of_chunks];
-
-    // --------------------------------------------------
-    // Allocate each chunk on DEVICE
-    // --------------------------------------------------
-
-    for (int i = 0; i < num_of_chunks; i++)
-    {
-        // Input
-        cudaMalloc(
-            &temp_d_input[i],
-            input_size[i] * sizeof(char));
-
-        // Output
-        //
-        // Currently output size == input size
-        // because your kernel only copies data.
-        cudaMalloc(
-            &temp_d_output[i],
-            (input_size[i] + 2) * sizeof(char));
-
-        // --------------------------------------------------
-        // Copy input chunk: HOST -> DEVICE
-        // --------------------------------------------------
-
-        cudaMemcpy(
-            temp_d_input[i],
-            src_file[i],
-            input_size[i] * sizeof(char),
-            cudaMemcpyHostToDevice);
-    }
-
-    // --------------------------------------------------
-    // Copy DEVICE POINTER ARRAYS to DEVICE
-    // --------------------------------------------------
-
-    cudaMemcpy(
-        d_input,
-        temp_d_input,
-        num_of_chunks * sizeof(char *),
-        cudaMemcpyHostToDevice);
-
-    cudaMemcpy(
-        d_output,
-        temp_d_output,
-        num_of_chunks * sizeof(char *),
-        cudaMemcpyHostToDevice);
-
-    // --------------------------------------------------
-    // Launch kernel
-    // --------------------------------------------------
-
-    int threads = 256;
-
-    int blocks =
-        (num_of_chunks + threads - 1) / threads;
-
-    // std::cout << blocks << " " << threads << std::endl;
-
-    // initialize the gpu classes
-    // Heap Resize
-    size_t heapSize = 4095U * 1024 * 1024; // 4095 MB
-    cudaDeviceSetLimit(cudaLimitMallocHeapSize, heapSize);
-
-    cudaError_t err1 = cudaGetLastError();
-    if (err1 != cudaSuccess)
-        std::cerr << "Heap Launch error: "
-                  << cudaGetErrorString(err1) << '\n';
-
-    err1 = cudaDeviceSynchronize();
-    if (err1 != cudaSuccess)
-        std::cerr << "Heap Kernel error: "
-                  << cudaGetErrorString(err1) << '\n';
-
-    init<<<1, 1>>>(memory_level);
-    cudaDeviceSynchronize();
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess)
-        std::cerr << "Launch error: "
-                  << cudaGetErrorString(err) << '\n';
-
-    err = cudaDeviceSynchronize();
-    if (err != cudaSuccess)
-        std::cerr << "Kernel error: "
-                  << cudaGetErrorString(err) << '\n';
-
-    ////////////////////paq9_cuda call////////////////////////////
-
-    std::cout << "Assigned block: " << blocks << std::endl;
-    threads = std::min(threads, (int)num_of_chunks);
-    std::cout << "Assigned threads: " << threads << std::endl;
-    std::cout << "Total threads: " << blocks * threads << std::endl;
-
-    paq9_cuda<<<blocks, threads>>>(
-        d_input_size,
-        d_input,
-        d_output_size,
-        d_output,
-        num_of_chunks, COMPRESS, memory_level);
-
-    cudaDeviceSynchronize();
-
-    err1 = cudaGetLastError();
-    if (err1 != cudaSuccess)
-        std::cerr << "Launch error paq9: "
-                  << cudaGetErrorString(err1) << '\n';
-
-    err1 = cudaDeviceSynchronize();
-    if (err1 != cudaSuccess)
-        std::cerr << "Kernel error paq9: "
-                  << cudaGetErrorString(err1) << '\n';
-
-    // --------------------------------------------------
-    // Copy output sizes: DEVICE -> HOST
-    // --------------------------------------------------
-
-    // FIX: Allocate memory for the host integer array before copying
-    int *output_size = (int *)malloc(num_of_chunks * sizeof(int));
-    cudaMemcpy(output_size, d_output_size, num_of_chunks * sizeof(int), cudaMemcpyDeviceToHost);
-
-    // --------------------------------------------------
-    // Copy output chunks: DEVICE -> HOST
-    // --------------------------------------------------
-
-    // FIX: Allocate memory for the array of host pointers before copying
-    char **output = new char *[num_of_chunks];
-
-    for (int i = 0; i < num_of_chunks; i++)
-    {
-        // FIX: Allocate memory for each specific chunk array before copying
-        output[i] = new char[output_size[i]];
-        cudaMemcpy(
-            output[i],
-            temp_d_output[i],
-            output_size[i] * sizeof(char),
-            cudaMemcpyDeviceToHost);
-    }
-
-    // --------------------------------------------------
-    // Free DEVICE chunk memory
-    // --------------------------------------------------
-
-    for (int i = 0; i < num_of_chunks; i++)
-    {
-        cudaFree(temp_d_input[i]);
-        cudaFree(temp_d_output[i]);
-    }
-
-    // --------------------------------------------------
-    // Free DEVICE arrays
-    // --------------------------------------------------
-
-    cudaFree(d_input);
-    cudaFree(d_output);
-
-    cudaFree(d_input_size);
-    cudaFree(d_output_size);
-
-    delete[] temp_d_input;
-    delete[] temp_d_output;
-
-    // Inside your main writing logic:
     std::ofstream dest(destination_file, std::ios::binary);
     if (!dest)
     {
         std::cout << std::string(destination_file) << " does not created/opened.\n";
         exit(1);
     }
+
     std::string lvl = std::to_string(memory_level);
-    dest.write("PAQ9-CUDA", 9);            // program name
-    dest.put(1);                           // program version
-    dest.write(lvl.c_str(), lvl.length()); // level
-    dest.put(0);
+    dest.write("PAQ9-CUDA", 9);                   // program name
+    dest.put(1);                                  // program version
     dest.write(source_file, strlen(source_file)); // filename
     dest.put(0);
-    dest.put('c'); // compressed mode
-    int total_input = 0, total_output = 0;
-    for (size_t i = 0; i < num_of_chunks; i++)
+    dest.put('c');              // compressed mode
+    put8_stream(total_B, dest); // total uncompressed size in bytes
+    put4_stream(memory_chunk_level, dest);
+    put4_stream(memory_level, dest);
+    put4_stream(level, dest);
+    put4_stream(num_of_chunks, dest); // num of chunks
+    // put4_stream(device_call_count, dest);          // total device call
+    // put4_stream(maximumThreadPerDeviceCall, dest); // maximum thread per device call
+
+    // std out
+    std::cout << "Total Uncompressed File Size: " << 1.0 * total_B / MB << " MB" << endl;
+    std::cout << "Memory Chunk Size: " << memory_chunk_level << "MB\n Memory Level " << memory_level << " \n Level: " << level << endl;
+    std::cout << "Total Chunk" << " " << num_of_chunks << endl;
+    std::cout << "Maximum Thread Per Device Call: " << maximumThreadPerDeviceCall << endl;
+    std::cout << "Maximum processed per device call: " << maximumThreadPerDeviceCall * chunk_B / MB << " MB" << endl;
+    std::cout << "Total Device Call " << device_call_count << endl;
+
+    // device initialization
+    init<<<1, 1>>>(memory_level);
+    cudaDeviceSynchronize();
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess)
     {
-        total_input += input_size[i];
-        total_output += output_size[i];
+        std::cerr << "Launch error: "
+                  << cudaGetErrorString(err) << '\n';
+        exit(1);
     }
 
-    put4_stream((U32)(total_input), dest);
-    put4_stream((U32)(total_output), dest);
-    put4_stream((U32)(num_of_chunks), dest);
-
-    std::cout << "Uncompressed  ->  Compressed\n";
-
-    for (size_t i = 0; i < num_of_chunks; i++)
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess)
     {
-
-        put4_stream((U32)(input_size[i]), dest);
-        put4_stream((U32)(output_size[i]), dest);
-        dest.write(output[i], output_size[i]);
-        std::cout << input_size[i] << " Byte -> " << output_size[i] << " Byte" << std::endl;
+        std::cerr << "Kernel error: "
+                  << cudaGetErrorString(err) << '\n';
+        exit(1);
     }
+    for (int call_count = 0; call_count < device_call_count; call_count++)
+    {
+        std::cout << "\n\nDevice Call No: " << call_count + 1 << endl;
+        int num_of_current_thread = std::min(maximumThreadPerDeviceCall, (num_of_chunks - call_count * maximumThreadPerDeviceCall));
+
+        char **src_file = new char *[num_of_current_thread];
+
+        std::vector<int> input_size(num_of_current_thread);
+
+        for (size_t i = 0; i < num_of_current_thread; i++)
+        {
+            size_t current_B =
+                min(chunk_B, total_B - ((call_count * maximumThreadPerDeviceCall) + i) * chunk_B);
+
+            src_file[i] = new char[current_B];
+
+            source.read(src_file[i], current_B);
+            input_size[i] = current_B;
+        }
+
+        // preparing for calling device function
+
+        // --------------------------------------------------
+        // Device pointer arrays
+        // --------------------------------------------------
+
+        char **d_input;
+        char **d_output;
+
+        cudaMalloc(&d_input, num_of_current_thread * sizeof(char *));
+        cudaMalloc(&d_output, num_of_current_thread * sizeof(char *));
+
+        // --------------------------------------------------
+        // Size arrays
+        // --------------------------------------------------
+
+        int *d_input_size;
+        int *d_output_size;
+
+        cudaMalloc(&d_input_size,
+                   num_of_current_thread * sizeof(int));
+
+        cudaMalloc((void **)&d_output_size, num_of_current_thread * sizeof(int));
+        // --------------------------------------------------
+        // Copy input sizes: HOST -> DEVICE
+        // --------------------------------------------------
+
+        cudaMemcpy(
+            d_input_size,
+            input_size.data(),
+            num_of_current_thread * sizeof(int),
+            cudaMemcpyHostToDevice);
+
+        // --------------------------------------------------
+        // Temporary host arrays containing device pointers
+        // --------------------------------------------------
+
+        char **temp_d_input =
+            new char *[num_of_current_thread];
+
+        char **temp_d_output =
+            new char *[num_of_current_thread];
+
+        // --------------------------------------------------
+        // Allocate each chunk on DEVICE
+        // --------------------------------------------------
+
+        for (int i = 0; i < num_of_current_thread; i++)
+        {
+            // Input
+            cudaMalloc(
+                &temp_d_input[i],
+                input_size[i] * sizeof(char));
+
+            // Output
+            //
+            // Currently output size == input size
+            // because your kernel only copies data.
+            cudaMalloc(
+                &temp_d_output[i],
+                (input_size[i] + 2) * sizeof(char));
+
+            // --------------------------------------------------
+            // Copy input chunk: HOST -> DEVICE
+            // --------------------------------------------------
+
+            cudaMemcpy(
+                temp_d_input[i],
+                src_file[i],
+                input_size[i] * sizeof(char),
+                cudaMemcpyHostToDevice);
+        }
+
+        // --------------------------------------------------
+        // Copy DEVICE POINTER ARRAYS to DEVICE
+        // --------------------------------------------------
+
+        cudaMemcpy(
+            d_input,
+            temp_d_input,
+            num_of_current_thread * sizeof(char *),
+            cudaMemcpyHostToDevice);
+
+        cudaMemcpy(
+            d_output,
+            temp_d_output,
+            num_of_current_thread * sizeof(char *),
+            cudaMemcpyHostToDevice);
+
+        // --------------------------------------------------
+        // Launch kernel
+        // --------------------------------------------------
+
+        int threads = 256;
+
+        int blocks =
+            (num_of_current_thread + threads - 1) / threads;
+
+        // std::cout << blocks << " " << threads << endl;
+
+        ////////////////////paq9_cuda call////////////////////////////
+
+        std::cout << "Assigned block: " << blocks << endl;
+        threads = std::min(threads, (int)num_of_current_thread);
+        std::cout << "Assigned threads: " << threads << endl;
+        std::cout << "Total threads: " << blocks * threads << endl;
+
+        paq9_cuda<<<blocks, threads>>>(
+            d_input_size,
+            d_input,
+            d_output_size,
+            d_output,
+            num_of_current_thread, COMPRESS, memory_level);
+
+        cudaDeviceSynchronize();
+        cudaError_t err1;
+        err1 = cudaGetLastError();
+        if (err1 != cudaSuccess)
+            std::cerr << "Launch error paq9: "
+                      << cudaGetErrorString(err1) << '\n';
+
+        err1 = cudaDeviceSynchronize();
+        if (err1 != cudaSuccess)
+            std::cerr << "Kernel error paq9: "
+                      << cudaGetErrorString(err1) << '\n';
+
+        // --------------------------------------------------
+        // Copy output sizes: DEVICE -> HOST
+        // --------------------------------------------------
+
+        // FIX: Allocate memory for the host integer array before copying
+        int *output_size = (int *)malloc(num_of_current_thread * sizeof(int));
+        cudaMemcpy(output_size, d_output_size, num_of_current_thread * sizeof(int), cudaMemcpyDeviceToHost);
+
+        // --------------------------------------------------
+        // Copy output chunks: DEVICE -> HOST
+        // --------------------------------------------------
+
+        // FIX: Allocate memory for the array of host pointers before copying
+        char **output = new char *[num_of_current_thread];
+
+        for (int i = 0; i < num_of_current_thread; i++)
+        {
+            // FIX: Allocate memory for each specific chunk array before copying
+            output[i] = new char[output_size[i]];
+            cudaMemcpy(
+                output[i],
+                temp_d_output[i],
+                output_size[i] * sizeof(char),
+                cudaMemcpyDeviceToHost);
+        }
+
+        // --------------------------------------------------
+        // Free DEVICE chunk memory
+        // --------------------------------------------------
+
+        for (int i = 0; i < num_of_current_thread; i++)
+        {
+            cudaFree(temp_d_input[i]);
+            cudaFree(temp_d_output[i]);
+        }
+
+        // --------------------------------------------------
+        // Free DEVICE arrays
+        // --------------------------------------------------
+
+        cudaFree(d_input);
+        cudaFree(d_output);
+
+        cudaFree(d_input_size);
+        cudaFree(d_output_size);
+
+        delete[] temp_d_input;
+        delete[] temp_d_output;
+
+        // Inside your main writing logic:
+
+        int total_input = 0, total_output = 0;
+        for (size_t i = 0; i < num_of_current_thread; i++)
+        {
+            total_input += input_size[i];
+            total_output += output_size[i];
+        }
+
+        std::cout << "Uncompressed  ->  Compressed\n";
+
+        for (size_t i = 0; i < num_of_current_thread; i++)
+        {
+
+            put4_stream((U32)(input_size[i]), dest);
+            put4_stream((U32)(output_size[i]), dest);
+            dest.write(output[i], output_size[i]);
+            std::cout << input_size[i] << " Byte -> " << output_size[i] << " Byte" << endl;
+        }
+
+        std::cout << "\n\nPer Device Call:" << total_input << " Byte->" << total_output << " Byte " << endl;
+        total_compressed_size += total_output;
+        total_uncompressed_size += total_input;
+    }
+    source.close();
     dest.close();
-    std::cout << "Total: " << total_input << " Byte -> " << total_output << " Byte" << std::endl;
-    total_compressed_size = total_output;
-    total_uncompressed_size = total_input;
-    std::cout << "Compression Ratio: " << 1.0 * total_uncompressed_size / total_compressed_size << std::endl;
+
+    std::cout << endl
+              << endl;
+    std::cout << "Total: " << total_uncompressed_size << " Byte -> " << total_compressed_size << " Byte" << endl;
+
+    std::cout << "Compression Ratio: " << 1.0 * total_uncompressed_size / total_compressed_size << endl;
 }
 bool check_archive(std::istream &in)
 {
@@ -1770,29 +1808,31 @@ void decompress(const char *destination_file, const char *source_file)
     std::ifstream source(source_file, std::ios::binary);
     if (!source)
     {
-        std::cerr << "Cannot open " << source_file << std::endl;
+        std::cerr << "Cannot open " << source_file << endl;
         exit(1);
     }
+    source.seekg(0, std::ios::end);
+    size_t total_B = source.tellg();
+    source.clear();
+    source.seekg(0, std::ios::beg);
+
     if (!check_archive(source))
     {
         std::cout << "This is not a PAQ9-CUDA compressed file.\n";
         exit(1);
     }
 
-    memory_level = get_number(source);
-    std::cout << "Memory Level: " << memory_level << std::endl;
-
     std::string filename = get_file_name(source);
 
     if (destination_file == 0)
     {
 
-        std::cout << "Uncompressed to file: " << filename << std::endl;
+        std::cout << "Uncompressed to file: " << filename << endl;
         destination_file = filename.c_str();
     }
     else
     {
-        std::cout << filename << " -> " << destination_file << std::endl;
+        std::cout << filename << " -> " << destination_file << endl;
     }
 
     char mode = source.get();
@@ -1801,251 +1841,270 @@ void decompress(const char *destination_file, const char *source_file)
     }
     else if (mode == 'c')
     {
-        int usize = get4_stream(source); // uncompressed total size
-        int csize = get4_stream(source); // compressed total size
+        maximumHeapLimit = getMaximumHeapLimit();
+        maximumFreeMemory = getMaximumFreeMemory();
+        size_t maximumMemory = std::min(maximumFreeMemory, maximumHeapLimit);
+        maximumMemory = 0.80 * maximumMemory;
 
+        size_t usize = get8_stream(source); // uncompressed total size
+        memory_chunk_level = get4_stream(source);
+        memory_level = get4_stream(source);
+        level = get4_stream(source);
         int num_of_chunks = get4_stream(source);
 
-        std::vector<char *> input(num_of_chunks);
-        std::vector<int> input_size(num_of_chunks);
-        std::vector<int> uncompressed_size(num_of_chunks);
+        // int device_call_count = get4_stream(source);
+        // int maximumThreadPerDeviceCall = get4_stream(source);
 
-        for (int i = 0; i < num_of_chunks; i++)
-        {
-            uncompressed_size[i] = get4_stream(source);
-            input_size[i] = get4_stream(source);
-            input[i] = get_input(source, input_size[i]);
-        }
-        source.close();
+        size_t memoryPerThread = 3.5 * getBytesFromMemoryLevel(memory_level);
 
-        std::cout << "Unompressed Size: " << usize << " KB = " << 1.0 * usize / MB << " MB" << std::endl;
-        std::cout << "Compressed Size: " << csize << " KB =" << 1.0 * csize / MB << " MB " << std::endl;
-        std::cout << "Number of Chunks: " << num_of_chunks << std::endl;
+        int maximumThreadPerDeviceCall = (maximumMemory + memoryPerThread - 1) / memoryPerThread;
+        int device_call_count = (num_of_chunks + maximumThreadPerDeviceCall - 1) / maximumThreadPerDeviceCall;
+        size_t chunk_B = memory_chunk_level * MB;
+        std::cout << "Total Compressed File Size: " << total_B << endl;
+        std::cout << "Total Uncompressed File Size: " << usize << " MB" << endl;
+        std::cout << "Memory Chunk Size: " << memory_chunk_level << "MB\n Memory Level " << memory_level << " \n Level: " << level << endl;
+        std::cout << "Total Chunk" << " " << num_of_chunks << endl;
+        std::cout << "Maximum Thread Per Device Call: " << maximumThreadPerDeviceCall << endl;
+        std::cout << "Maximum processed per device call: " << maximumThreadPerDeviceCall * chunk_B / MB << " MB" << endl;
+        std::cout << "Total Device Call " << device_call_count << endl;
 
-        // preparing for calling device function
-
-        // --------------------------------------------------
-        // Device pointer arrays
-        // --------------------------------------------------
-
-        char **d_input;
-        char **d_output;
-
-        cudaMalloc(&d_input, num_of_chunks * sizeof(char *));
-        cudaMalloc(&d_output, num_of_chunks * sizeof(char *));
-
-        // --------------------------------------------------
-        // Size arrays
-        // --------------------------------------------------
-
-        int *d_input_size;
-        int *d_output_size;
-
-        cudaMalloc(&d_input_size,
-                   num_of_chunks * sizeof(int));
-
-        cudaMalloc((void **)&d_output_size, num_of_chunks * sizeof(int));
-        // --------------------------------------------------
-        // Copy input sizes: HOST -> DEVICE
-        // --------------------------------------------------
-
-        cudaMemcpy(
-            d_input_size,
-            input_size.data(),
-            num_of_chunks * sizeof(int),
-            cudaMemcpyHostToDevice);
-
-        // --------------------------------------------------
-        // Temporary host arrays containing device pointers
-        // --------------------------------------------------
-
-        char **temp_d_input =
-            new char *[num_of_chunks];
-
-        char **temp_d_output =
-            new char *[num_of_chunks];
-
-        // --------------------------------------------------
-        // Allocate each chunk on DEVICE
-        // --------------------------------------------------
-
-        for (int i = 0; i < num_of_chunks; i++)
-        {
-            // Input
-            cudaMalloc(
-                &temp_d_input[i],
-                input_size[i] * sizeof(char));
-
-            // Output
-            //
-            // Currently output size == input size
-            // because your kernel only copies data.
-            cudaMalloc(
-                &temp_d_output[i],
-                (uncompressed_size[i]) * sizeof(char));
-
-            // --------------------------------------------------
-            // Copy input chunk: HOST -> DEVICE
-            // --------------------------------------------------
-
-            cudaMemcpy(
-                temp_d_input[i],
-                input[i],
-                input_size[i] * sizeof(char),
-                cudaMemcpyHostToDevice);
-        }
-
-        // --------------------------------------------------
-        // Copy DEVICE POINTER ARRAYS to DEVICE
-        // --------------------------------------------------
-
-        cudaMemcpy(
-            d_input,
-            temp_d_input,
-            num_of_chunks * sizeof(char *),
-            cudaMemcpyHostToDevice);
-
-        cudaMemcpy(
-            d_output,
-            temp_d_output,
-            num_of_chunks * sizeof(char *),
-            cudaMemcpyHostToDevice);
-
-        // --------------------------------------------------
-        // Launch kernel
-        // --------------------------------------------------
-
-        int threads = 256;
-
-        int blocks =
-            (num_of_chunks + threads - 1) / threads;
-
-        // std::cout << blocks << " " << threads << std::endl;
-
-        // initialize the gpu classes
-        // Heap Resize
-        size_t heapSize = 4095U * 1024 * 1024; // 512 MB
-        cudaDeviceSetLimit(cudaLimitMallocHeapSize, heapSize);
-
-        cudaError_t err1 = cudaGetLastError();
-        if (err1 != cudaSuccess)
-            std::cerr << "Heap Launch error: "
-                      << cudaGetErrorString(err1) << '\n';
-
-        err1 = cudaDeviceSynchronize();
-        if (err1 != cudaSuccess)
-            std::cerr << "Heap Kernel error: "
-                      << cudaGetErrorString(err1) << '\n';
-
+        // device initialization
         init<<<1, 1>>>(memory_level);
         cudaDeviceSynchronize();
         cudaError_t err = cudaGetLastError();
         if (err != cudaSuccess)
+        {
             std::cerr << "Launch error: "
                       << cudaGetErrorString(err) << '\n';
+            exit(1);
+        }
 
         err = cudaDeviceSynchronize();
         if (err != cudaSuccess)
+        {
             std::cerr << "Kernel error: "
                       << cudaGetErrorString(err) << '\n';
-
-        ////////////////////paq9_cuda call///////////////////////////
-
-        std::cout << "Assigned block: " << blocks << std::endl;
-        threads = std::min(threads, (int)num_of_chunks);
-        std::cout << "Assigned threads: " << threads << std::endl;
-        std::cout << "Total threads: " << blocks * threads << std::endl;
-
-        paq9_cuda<<<blocks, threads>>>(
-            d_input_size,
-            d_input,
-            d_output_size,
-            d_output,
-            num_of_chunks, DECOMPRESS, memory_level);
-
-        cudaDeviceSynchronize();
-
-        err1 = cudaGetLastError();
-        if (err1 != cudaSuccess)
-            std::cerr << "Launch error paq9: "
-                      << cudaGetErrorString(err1) << '\n';
-
-        err1 = cudaDeviceSynchronize();
-        if (err1 != cudaSuccess)
-            std::cerr << "Kernel error paq9: "
-                      << cudaGetErrorString(err1) << '\n';
-
-        // --------------------------------------------------
-        // Copy output sizes: DEVICE -> HOST
-        // --------------------------------------------------
-
-        // FIX: Allocate memory for the host integer array before copying
-        int *output_size = (int *)malloc(num_of_chunks * sizeof(int));
-        cudaMemcpy(output_size, d_output_size, num_of_chunks * sizeof(int), cudaMemcpyDeviceToHost);
-
-        // --------------------------------------------------
-        // Copy output chunks: DEVICE -> HOST
-        // --------------------------------------------------
-
-        // FIX: Allocate memory for the array of host pointers before copying
-        char **output = new char *[num_of_chunks];
-
-        for (int i = 0; i < num_of_chunks; i++)
-        {
-            // FIX: Allocate memory for each specific chunk array before copying
-            output[i] = new char[output_size[i]];
-            cudaMemcpy(
-                output[i],
-                temp_d_output[i],
-                output_size[i] * sizeof(char),
-                cudaMemcpyDeviceToHost);
+            exit(1);
         }
 
-        // --------------------------------------------------
-        // Free DEVICE chunk memory
-        // --------------------------------------------------
-
-        for (int i = 0; i < num_of_chunks; i++)
-        {
-            cudaFree(temp_d_input[i]);
-            cudaFree(temp_d_output[i]);
-        }
-
-        // --------------------------------------------------
-        // Free DEVICE arrays
-        // --------------------------------------------------
-
-        cudaFree(d_input);
-        cudaFree(d_output);
-
-        cudaFree(d_input_size);
-        cudaFree(d_output_size);
-
-        delete[] temp_d_input;
-        delete[] temp_d_output;
-
-        // Inside your main writing logic:
+        // output file configuration
         std::ofstream dest(destination_file, std::ios::binary);
         if (!dest)
         {
             std::cout << std::string(destination_file) << " does not created/opened.\n";
             exit(1);
         }
-
-        int total_input = 0, total_output = 0;
-        std::cout << "Compressed  ->  Decompressed \n";
-        for (size_t i = 0; i < num_of_chunks; i++)
+        for (int call_count = 0; call_count < device_call_count; call_count++)
         {
+            std::cout << "\n\nDevice Call No: " << call_count + 1 << endl;
+            int num_of_current_thread = std::min(maximumThreadPerDeviceCall, (num_of_chunks - call_count * maximumThreadPerDeviceCall));
 
-            dest.write(output[i], output_size[i]);
-            total_input += input_size[i];
-            total_output += output_size[i];
-            std::cout << input_size[i] << " Byte -> " << output_size[i] << " Byte" << std::endl;
+            std::vector<char *> input(num_of_current_thread);
+            std::vector<int> input_size(num_of_current_thread);
+            std::vector<int> uncompressed_size(num_of_current_thread);
+            for (int i = 0; i < num_of_current_thread; i++)
+            {
+                uncompressed_size[i] = get4_stream(source);
+                input_size[i] = get4_stream(source);
+                input[i] = get_input(source, input_size[i]);
+            }
+
+            // preparing for calling device function
+
+            // --------------------------------------------------
+            // Device pointer arrays
+            // --------------------------------------------------
+
+            char **d_input;
+            char **d_output;
+
+            cudaMalloc(&d_input, num_of_current_thread * sizeof(char *));
+            cudaMalloc(&d_output, num_of_current_thread * sizeof(char *));
+
+            // --------------------------------------------------
+            // Size arrays
+            // --------------------------------------------------
+
+            int *d_input_size;
+            int *d_output_size;
+
+            cudaMalloc(&d_input_size,
+                       num_of_current_thread * sizeof(int));
+
+            cudaMalloc((void **)&d_output_size, num_of_current_thread * sizeof(int));
+            // --------------------------------------------------
+            // Copy input sizes: HOST -> DEVICE
+            // --------------------------------------------------
+
+            cudaMemcpy(
+                d_input_size,
+                input_size.data(),
+                num_of_current_thread * sizeof(int),
+                cudaMemcpyHostToDevice);
+
+            // --------------------------------------------------
+            // Temporary host arrays containing device pointers
+            // --------------------------------------------------
+
+            char **temp_d_input =
+                new char *[num_of_current_thread];
+
+            char **temp_d_output =
+                new char *[num_of_current_thread];
+
+            // --------------------------------------------------
+            // Allocate each chunk on DEVICE
+            // --------------------------------------------------
+
+            for (int i = 0; i < num_of_current_thread; i++)
+            {
+                // Input
+                cudaMalloc(
+                    &temp_d_input[i],
+                    input_size[i] * sizeof(char));
+
+                // Output
+                //
+                // Currently output size == input size
+                // because your kernel only copies data.
+                cudaMalloc(
+                    &temp_d_output[i],
+                    (uncompressed_size[i]) * sizeof(char));
+
+                // --------------------------------------------------
+                // Copy input chunk: HOST -> DEVICE
+                // --------------------------------------------------
+
+                cudaMemcpy(
+                    temp_d_input[i],
+                    input[i],
+                    input_size[i] * sizeof(char),
+                    cudaMemcpyHostToDevice);
+            }
+
+            // --------------------------------------------------
+            // Copy DEVICE POINTER ARRAYS to DEVICE
+            // --------------------------------------------------
+
+            cudaMemcpy(
+                d_input,
+                temp_d_input,
+                num_of_current_thread * sizeof(char *),
+                cudaMemcpyHostToDevice);
+
+            cudaMemcpy(
+                d_output,
+                temp_d_output,
+                num_of_current_thread * sizeof(char *),
+                cudaMemcpyHostToDevice);
+
+            // --------------------------------------------------
+            // Launch kernel
+            // --------------------------------------------------
+
+            int threads = 256;
+
+            int blocks =
+                (num_of_current_thread + threads - 1) / threads;
+
+            // std::cout << blocks << " " << threads << endl;
+
+            // initialize the gpu classes
+
+            ////////////////////paq9_cuda call///////////////////////////
+
+            std::cout << "Assigned block: " << blocks << endl;
+            threads = std::min(threads, (int)num_of_current_thread);
+            std::cout << "Assigned threads: " << threads << endl;
+            std::cout << "Total threads: " << blocks * threads << endl;
+
+            paq9_cuda<<<blocks, threads>>>(
+                d_input_size,
+                d_input,
+                d_output_size,
+                d_output,
+                num_of_current_thread, DECOMPRESS, memory_level);
+
+            cudaDeviceSynchronize();
+
+            cudaError_t err1 = cudaGetLastError();
+            if (err1 != cudaSuccess)
+                std::cerr << "Launch error paq9: "
+                          << cudaGetErrorString(err1) << '\n';
+
+            err1 = cudaDeviceSynchronize();
+            if (err1 != cudaSuccess)
+                std::cerr << "Kernel error paq9: "
+                          << cudaGetErrorString(err1) << '\n';
+
+            // --------------------------------------------------
+            // Copy output sizes: DEVICE -> HOST
+            // --------------------------------------------------
+
+            // FIX: Allocate memory for the host integer array before copying
+            int *output_size = (int *)malloc(num_of_current_thread * sizeof(int));
+            cudaMemcpy(output_size, d_output_size, num_of_current_thread * sizeof(int), cudaMemcpyDeviceToHost);
+
+            // --------------------------------------------------
+            // Copy output chunks: DEVICE -> HOST
+            // --------------------------------------------------
+
+            // FIX: Allocate memory for the array of host pointers before copying
+            char **output = new char *[num_of_current_thread];
+
+            for (int i = 0; i < num_of_current_thread; i++)
+            {
+                // FIX: Allocate memory for each specific chunk array before copying
+                output[i] = new char[output_size[i]];
+                cudaMemcpy(
+                    output[i],
+                    temp_d_output[i],
+                    output_size[i] * sizeof(char),
+                    cudaMemcpyDeviceToHost);
+            }
+
+            // --------------------------------------------------
+            // Free DEVICE chunk memory
+            // --------------------------------------------------
+
+            for (int i = 0; i < num_of_current_thread; i++)
+            {
+                cudaFree(temp_d_input[i]);
+                cudaFree(temp_d_output[i]);
+            }
+
+            // --------------------------------------------------
+            // Free DEVICE arrays
+            // --------------------------------------------------
+
+            cudaFree(d_input);
+            cudaFree(d_output);
+
+            cudaFree(d_input_size);
+            cudaFree(d_output_size);
+
+            delete[] temp_d_input;
+            delete[] temp_d_output;
+
+            // Inside your main writing logic:
+
+            int total_input = 0, total_output = 0;
+            std::cout << "Compressed  ->  Decompressed \n";
+            for (size_t i = 0; i < num_of_current_thread; i++)
+            {
+
+                dest.write(output[i], output_size[i]);
+                total_input += input_size[i];
+                total_output += output_size[i];
+                std::cout << input_size[i] << " Byte -> " << output_size[i] << " Byte" << endl;
+            }
+            std::cout << "Per Device Call: " << total_input << " Byte -> " << total_output << " Byte" << endl;
+            total_compressed_size += total_input;
+            total_uncompressed_size += total_output;
         }
+        source.close();
         dest.close();
-        std::cout << "Total: " << total_input << " Byte -> " << total_output << " Byte" << std::endl;
-        total_compressed_size = total_input;
-        total_uncompressed_size = total_output;
+        std::cout << "\n\nTotal " << total_compressed_size << " Byte -> " << total_uncompressed_size << " Byte" << endl;
     }
     else
     {
