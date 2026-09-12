@@ -330,6 +330,10 @@ Please review the source and repository history for the exact licensing and attr
 
 ## Author
 
+**PAQ9: Matt Mahoney**
+
+CUDA version:
+
 **Md. Siam Ahmed**
 
 GitHub: [@siam35862](https://github.com/siam35862)
