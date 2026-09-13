@@ -1451,8 +1451,25 @@ void compress(char *destination_file, char *source_file)
 
     size_t maximumMemory;
     // maximumMemory = std::min(maximumFreeMemory, maximumHeapLimit);
-    maximumMemory = 1024 * 1024 * 1024; // 1GB
+    maximumMemory = 4095 * 1024 * 1024; // 1GB
     maximumMemory = 8 * maximumMemory / 10;
+    cudaDeviceSetLimit(cudaLimitMallocHeapSize, maximumMemory);
+    cudaError_t err1;
+    err1 = cudaGetLastError();
+    if (err1 != cudaSuccess)
+    {
+        std::cerr << "Launch error heap: "
+                  << cudaGetErrorString(err1) << '\n';
+        exit(1);
+    }
+
+    err1 = cudaDeviceSynchronize();
+    if (err1 != cudaSuccess)
+    {
+        std::cerr << "Kernel error heap: "
+                  << cudaGetErrorString(err1) << '\n';
+        exit(1);
+    }
 
     std::ifstream source(source_file, std::ios::binary);
     if (!source)
