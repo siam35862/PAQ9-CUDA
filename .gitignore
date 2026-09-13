@@ -1,2 +1,4 @@
 *.exe
 *.exe
+PAQ9/paq9-cuda
+*.paq9
