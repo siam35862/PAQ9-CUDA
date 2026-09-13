@@ -1515,7 +1515,7 @@ void compress(char *destination_file, char *source_file)
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess)
     {
-        std::cerr << "Launch error: "
+        std::cerr << "Launch Kernel error: "
                   << cudaGetErrorString(err) << '\n';
         exit(1);
     }
