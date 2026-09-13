@@ -18,3 +18,11 @@ Windows:
 At first, Compile the program using **nvcc paq9-cuda.cu -o paq9_cuda**
 Compression: **paq9_cuda -c <destination_file> [-level] <source_file>**
 Decompression: **paq9_cuda -d <source_file> <destination_file>**
+
+
+Working flow:
+
+main function:
+
+If the argument counter is less than 3. Then terminate the program and print related error.
+Then check the mode
