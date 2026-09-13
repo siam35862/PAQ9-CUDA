@@ -26,8 +26,45 @@ int memory_chunk_level = 1; // default memory chunks 1MB
 int level = 1;
 size_t total_uncompressed_size = 0;
 size_t total_compressed_size = 0;
-size_t maximumHeapLimit = 8;     // default heap limit
-size_t maximumFreeMemory = 1024; // default consider 1GB memory has free
+size_t maximum_heap_limit = 8;     // default heap limit
+size_t maximum_free_memory = 1024; // default consider 1GB memory has free
+
+__device__ unsigned long long device_call_heap_allocated = 0;
+unsigned long long current_cuda_malloc_allocated = 0;
+unsigned long long maximum_device_call_memory = 0;
+unsigned long long maximum_cuda_malloc_for_device_call = 0;
+unsigned long long maximum_device_heap_for_device_call = 0;
+
+void begin_device_call_memory()
+{
+    unsigned long long zero = 0;
+    current_cuda_malloc_allocated = 0;
+    cudaMemcpyToSymbol(device_call_heap_allocated, &zero, sizeof(zero));
+}
+
+void finish_device_call_memory()
+{
+    unsigned long long device_heap_allocated = 0;
+    cudaMemcpyFromSymbol(&device_heap_allocated, device_call_heap_allocated,
+                         sizeof(device_heap_allocated));
+    unsigned long long device_call_memory =
+        current_cuda_malloc_allocated + device_heap_allocated;
+    if (device_call_memory > maximum_device_call_memory)
+    {
+        maximum_device_call_memory = device_call_memory;
+        maximum_cuda_malloc_for_device_call = current_cuda_malloc_allocated;
+        maximum_device_heap_for_device_call = device_heap_allocated;
+    }
+}
+
+template <typename T>
+cudaError_t cudaMallocTracked(T **pointer, size_t size)
+{
+    cudaError_t result = cudaMalloc(pointer, size);
+    if (result == cudaSuccess)
+        current_cuda_malloc_allocated += size;
+    return result;
+}
 
 __device__ int get_tid()
 {
@@ -54,6 +91,8 @@ public:
             return;
         }
         total_allocated_size += allocate_size * sizeof(T);
+        atomicAdd(&device_call_heap_allocated,
+                  static_cast<unsigned long long>(allocate_size) * sizeof(T));
     }
 };
 
@@ -463,7 +502,7 @@ __device__ static const U8 State_table[256][2] = {
 //     prediction.  Larger values are better for stationary sources.
 // sm.update(y) updates the model with actual bit y (0..1).
 
-__device__ int StateMap_dt[1024];
+__device__ int state_map_dt[1024];
 
 class StateMap
 {
@@ -492,9 +531,9 @@ __device__ StateMap::StateMap(int n) : N(n), cntxt(0)
     allocator[get_tid()]->alloc(prediction_table, N);
     for (int i = 0; i < N; i++)
         prediction_table[i] = 2147483648U; // 1<<31
-    if (StateMap_dt[0] == 0)
+    if (state_map_dt[0] == 0)
         for (int i = 0; i < 1024; i++)
-            StateMap_dt[i] = 16384 / (i + i + 3);
+            state_map_dt[i] = 16384 / (i + i + 3);
 }
 
 __device__ StateMap::~StateMap()
@@ -513,7 +552,7 @@ __device__ void StateMap::update(int y, int limit)
     else
         prediction_table[cntxt] = prediction_table[cntxt] & 0xfffffc00 | limit;
 
-    prediction_table[cntxt] += (((y << 22) - p) >> 3) * StateMap_dt[n] & 0xfffffc00;
+    prediction_table[cntxt] += (((y << 22) - p) >> 3) * state_map_dt[n] & 0xfffffc00;
 }
 
 __device__ int StateMap::predict_next_bit(int cntx)
@@ -1445,17 +1484,17 @@ size_t getMaximumFreeMemory()
 
 void compress(char *destination_file, char *source_file)
 {
-    std::cout << "Compression cooking........." << endl;
+    // std::cout << "Compression cooking........." << endl;
 
-    maximumHeapLimit = getMaximumHeapLimit();
-    maximumFreeMemory = getMaximumFreeMemory();
+    maximum_heap_limit = getMaximumHeapLimit();
+    maximum_free_memory = getMaximumFreeMemory();
 
-    size_t maximumMemory;
+    size_t maximum_memory;
     
-    maximumMemory = (size_t)4095 * 1024 * 1024; // 4GB
-    maximumMemory = std::min(maximumFreeMemory, maximumHeapLimit);
-    maximumMemory = 5 * maximumMemory / 10;
-    cudaDeviceSetLimit(cudaLimitMallocHeapSize, maximumMemory);
+    maximum_memory = (size_t)4095 * 1024 * 1024; // 4GB
+    maximum_memory = std::min(maximum_free_memory, maximum_heap_limit);
+    maximum_memory = 5 * maximum_memory / 10;
+    cudaDeviceSetLimit(cudaLimitMallocHeapSize, maximum_memory);
     cudaError_t err1;
     err1 = cudaGetLastError();
     if (err1 != cudaSuccess)
@@ -1486,18 +1525,18 @@ void compress(char *destination_file, char *source_file)
 
     memory_chunk_level = (1 << (level - 1));
     memory_level = getMemoryLevelFromBytes(memory_chunk_level * MB);
-    size_t memoryPerThread = 3.5 * getBytesFromMemoryLevel(memory_level);
+    size_t memory_per_thread = 3.5 * getBytesFromMemoryLevel(memory_level);
 
-    int maximumThreadPerDeviceCall = (maximumMemory + memoryPerThread - 1) / memoryPerThread;
+    int maximum_thread_per_device_call = (maximum_memory + memory_per_thread - 1) / memory_per_thread;
 
     size_t chunk_B = memory_chunk_level * MB;
 
-    // std::cout << memory_chunk_level << " " << memory_level << " " << memoryPerThread << " " << maximumThreadPerDeviceCall << " " << chunk_B << endl;
+    // std::cout << memory_chunk_level << " " << memory_level << " " << memory_per_thread << " " << maximum_thread_per_device_call << " " << chunk_B << endl;
 
     int num_of_chunks =
         (total_B + chunk_B - 1) / chunk_B;
 
-    int device_call_count = (num_of_chunks + maximumThreadPerDeviceCall - 1) / maximumThreadPerDeviceCall;
+    int device_call_count = (num_of_chunks + maximum_thread_per_device_call - 1) / maximum_thread_per_device_call;
 
     // compressed file configuration
 
@@ -1520,15 +1559,18 @@ void compress(char *destination_file, char *source_file)
     put4_stream(level, dest);
     put4_stream(num_of_chunks, dest); // num of chunks
     // put4_stream(device_call_count, dest);          // total device call
-    // put4_stream(maximumThreadPerDeviceCall, dest); // maximum thread per device call
+    // put4_stream(maximum_thread_per_device_call, dest); // maximum thread per device call
 
     // std out
-    std::cout << "Total Uncompressed File Size: " << 1.0 * total_B / MB << " MB" << endl;
-    std::cout << "Memory Chunk Size: " << memory_chunk_level << "MB\n Memory Level " << memory_level << " \n Level: " << level << endl;
-    std::cout << "Total Chunk" << " " << num_of_chunks << endl;
-    std::cout << "Maximum Thread Per Device Call: " << maximumThreadPerDeviceCall << endl;
-    std::cout << "Maximum processed per device call: " << maximumThreadPerDeviceCall * chunk_B / MB << " MB" << endl;
-    std::cout << "Total Device Call " << device_call_count << endl;
+    std::cout << "Memory Chunk Level: " << memory_chunk_level << "MB" << endl;
+    std::cout << "Memory Level: " << memory_level << endl;
+    std::cout << "Level: " << level << endl;
+    std::cout << "Number of Chunks: " << num_of_chunks << endl;
+    std::cout << "Total threads: " << num_of_chunks << endl;
+    std::cout << "Maximum Thread at a time: " << maximum_thread_per_device_call << endl;
+    // std::cout << "Maximum processed per device call: "
+    //           << maximum_thread_per_device_call * chunk_B / MB << " MB" << endl;
+    // std::cout << "Total Device Call " << device_call_count << endl;
 
     // device initialization
     init<<<1, 1>>>(memory_level);
@@ -1551,8 +1593,8 @@ void compress(char *destination_file, char *source_file)
     total_uncompressed_size = 0;
     for (int call_count = 0; call_count < device_call_count; call_count++)
     {
-        std::cout << "\n\nDevice Call No: " << call_count + 1 << endl;
-        int num_of_current_thread = std::min(maximumThreadPerDeviceCall, (num_of_chunks - call_count * maximumThreadPerDeviceCall));
+        // std::cout << "\n\nDevice Call No: " << call_count + 1 << endl;
+        int num_of_current_thread = std::min(maximum_thread_per_device_call, (num_of_chunks - call_count * maximum_thread_per_device_call));
 
         char **src_file = new char *[num_of_current_thread];
 
@@ -1561,7 +1603,7 @@ void compress(char *destination_file, char *source_file)
         for (size_t i = 0; i < num_of_current_thread; i++)
         {
             size_t current_B =
-                min(chunk_B, total_B - ((call_count * maximumThreadPerDeviceCall) + i) * chunk_B);
+                min(chunk_B, total_B - ((call_count * maximum_thread_per_device_call) + i) * chunk_B);
 
             src_file[i] = new char[current_B];
 
@@ -1578,8 +1620,9 @@ void compress(char *destination_file, char *source_file)
         char **d_input;
         char **d_output;
 
-        cudaMalloc(&d_input, num_of_current_thread * sizeof(char *));
-        cudaMalloc(&d_output, num_of_current_thread * sizeof(char *));
+        begin_device_call_memory();
+        cudaMallocTracked(&d_input, num_of_current_thread * sizeof(char *));
+        cudaMallocTracked(&d_output, num_of_current_thread * sizeof(char *));
 
         // --------------------------------------------------
         // Size arrays
@@ -1588,10 +1631,10 @@ void compress(char *destination_file, char *source_file)
         size_t *d_input_size;
         size_t *d_output_size;
 
-        cudaMalloc(&d_input_size,
-                   num_of_current_thread * sizeof(size_t));
+        cudaMallocTracked(&d_input_size,
+                  num_of_current_thread * sizeof(size_t));
 
-        cudaMalloc((void **)&d_output_size, num_of_current_thread * sizeof(size_t));
+        cudaMallocTracked(&d_output_size, num_of_current_thread * sizeof(size_t));
         // --------------------------------------------------
         // Copy input sizes: HOST -> DEVICE
         // --------------------------------------------------
@@ -1619,7 +1662,7 @@ void compress(char *destination_file, char *source_file)
         for (int i = 0; i < num_of_current_thread; i++)
         {
             // Input
-            cudaMalloc(
+            cudaMallocTracked(
                 &temp_d_input[i],
                 input_size[i] * sizeof(char));
 
@@ -1627,7 +1670,7 @@ void compress(char *destination_file, char *source_file)
             //
             // Currently output size == input size
             // because your kernel only copies data.
-            cudaMalloc(
+            cudaMallocTracked(
                 &temp_d_output[i],
                 (input_size[i] + 2) * sizeof(char));
 
@@ -1671,10 +1714,10 @@ void compress(char *destination_file, char *source_file)
 
         ////////////////////paq9_cuda call////////////////////////////
 
-        std::cout << "Assigned block: " << blocks << endl;
+        // std::cout << "Assigned block: " << blocks << endl;
         threads = std::min(threads, (int)num_of_current_thread);
-        std::cout << "Assigned threads: " << threads << endl;
-        std::cout << "Total threads: " << blocks * threads << endl;
+        // std::cout << "Assigned threads: " << threads << endl;
+        // std::cout << "Total threads: " << blocks * threads << endl;
 
         paq9_cuda<<<blocks, threads>>>(
             d_input_size,
@@ -1700,6 +1743,8 @@ void compress(char *destination_file, char *source_file)
                       << cudaGetErrorString(err1) << '\n';
             exit(1);
         }
+
+        finish_device_call_memory();
 
         // --------------------------------------------------
         // Copy output sizes: DEVICE -> HOST
@@ -1767,18 +1812,16 @@ void compress(char *destination_file, char *source_file)
             put4_stream((U32)(input_size[i]), dest);
             put4_stream((U32)(output_size[i]), dest);
             dest.write(output[i], output_size[i]);
-            std::cout << input_size[i] << " Byte -> " << output_size[i] << " Byte" << endl;
+            // std::cout << input_size[i] << " Byte -> " << output_size[i] << " Byte" << endl;
         }
 
-        std::cout << "\n\nPer Device Call:" << total_input << " Byte->" << total_output << " Byte " << endl;
+        // std::cout << "\n\nPer Device Call:" << total_input << " Byte->" << total_output << " Byte " << endl;
         total_compressed_size += total_output;
         total_uncompressed_size += total_input;
     }
     source.close();
     dest.close();
 
-    std::cout << endl
-              << endl;
     std::cout << "Total: " << total_uncompressed_size << " Byte -> " << total_compressed_size << " Byte" << endl;
 
     std::cout << "Compression Ratio: " << 1.0 * total_uncompressed_size / total_compressed_size << endl;
@@ -1830,11 +1873,11 @@ char *get_input(std::istream &source, size_t size)
 }
 void decompress(const char *destination_file, const char *source_file)
 {
-    std::cout << "Decompression is cooking......" << endl;
+    // std::cout << "Decompression is cooking......" << endl;
 
     total_compressed_size = 0;
     total_uncompressed_size = 0;
-    constexpr size_t MB = 1024 * 1024;
+    // constexpr size_t MB = 1024 * 1024;
 
     std::ifstream source(source_file, std::ios::binary);
     if (!source)
@@ -1858,12 +1901,12 @@ void decompress(const char *destination_file, const char *source_file)
     if (destination_file == 0)
     {
 
-        std::cout << "Uncompressed to file: " << filename << endl;
+        // std::cout << "Uncompressed to file: " << filename << endl;
         destination_file = filename.c_str();
     }
     else
     {
-        std::cout << filename << " -> " << destination_file << endl;
+        // std::cout << filename << " -> " << destination_file << endl;
     }
 
     char mode = source.get();
@@ -1872,10 +1915,10 @@ void decompress(const char *destination_file, const char *source_file)
     }
     else if (mode == 'c')
     {
-        maximumHeapLimit = getMaximumHeapLimit();
-        maximumFreeMemory = getMaximumFreeMemory();
-        size_t maximumMemory = std::min(maximumFreeMemory, maximumHeapLimit);
-        maximumMemory = 0.80 * maximumMemory;
+        maximum_heap_limit = getMaximumHeapLimit();
+        maximum_free_memory = getMaximumFreeMemory();
+        size_t maximum_memory = std::min(maximum_free_memory, maximum_heap_limit);
+        maximum_memory = 5 * maximum_memory / 10;
 
         size_t usize = get8_stream(source); // uncompressed total size
         memory_chunk_level = get4_stream(source);
@@ -1884,20 +1927,22 @@ void decompress(const char *destination_file, const char *source_file)
         int num_of_chunks = get4_stream(source);
 
         // int device_call_count = get4_stream(source);
-        // int maximumThreadPerDeviceCall = get4_stream(source);
+        // int maximum_thread_per_device_call = get4_stream(source);
 
-        size_t memoryPerThread = 3.5 * getBytesFromMemoryLevel(memory_level);
+        size_t memory_per_thread = 3.5 * getBytesFromMemoryLevel(memory_level);
 
-        int maximumThreadPerDeviceCall = (maximumMemory + memoryPerThread - 1) / memoryPerThread;
-        int device_call_count = (num_of_chunks + maximumThreadPerDeviceCall - 1) / maximumThreadPerDeviceCall;
-        size_t chunk_B = memory_chunk_level * MB;
-        std::cout << "Total Compressed File Size: " << total_B << endl;
-        std::cout << "Total Uncompressed File Size: " << usize << " MB" << endl;
-        std::cout << "Memory Chunk Size: " << memory_chunk_level << "MB\n Memory Level " << memory_level << " \n Level: " << level << endl;
-        std::cout << "Total Chunk" << " " << num_of_chunks << endl;
-        std::cout << "Maximum Thread Per Device Call: " << maximumThreadPerDeviceCall << endl;
-        std::cout << "Maximum processed per device call: " << maximumThreadPerDeviceCall * chunk_B / MB << " MB" << endl;
-        std::cout << "Total Device Call " << device_call_count << endl;
+        int maximum_thread_per_device_call = (maximum_memory + memory_per_thread - 1) / memory_per_thread;
+        int device_call_count = (num_of_chunks + maximum_thread_per_device_call - 1) / maximum_thread_per_device_call;
+        // size_t chunk_B = memory_chunk_level * MB;
+        std::cout << "Memory Chunk Level: " << memory_chunk_level << "MB" << endl;
+        std::cout << "Memory Level: " << memory_level << endl;
+        std::cout << "Level: " << level << endl;
+        std::cout << "Number of Chunks: " << num_of_chunks << endl;
+        std::cout << "Total threads: " << num_of_chunks << endl;
+        std::cout << "Maximum Thread at a time: " << maximum_thread_per_device_call << endl;
+        // std::cout << "Maximum processed per device call: "
+        //           << maximum_thread_per_device_call * chunk_B / MB << " MB" << endl;
+        // std::cout << "Total Device Call " << device_call_count << endl;
 
         // device initialization
         init<<<1, 1>>>(memory_level);
@@ -1926,8 +1971,8 @@ void decompress(const char *destination_file, const char *source_file)
         }
         for (int call_count = 0; call_count < device_call_count; call_count++)
         {
-            std::cout << "\n\nDevice Call No: " << call_count + 1 << endl;
-            int num_of_current_thread = std::min(maximumThreadPerDeviceCall, (num_of_chunks - call_count * maximumThreadPerDeviceCall));
+            // std::cout << "\n\nDevice Call No: " << call_count + 1 << endl;
+            int num_of_current_thread = std::min(maximum_thread_per_device_call, (num_of_chunks - call_count * maximum_thread_per_device_call));
 
             std::vector<char *> input(num_of_current_thread);
             std::vector<size_t> input_size(num_of_current_thread);
@@ -1948,8 +1993,9 @@ void decompress(const char *destination_file, const char *source_file)
             char **d_input;
             char **d_output;
 
-            cudaMalloc(&d_input, num_of_current_thread * sizeof(char *));
-            cudaMalloc(&d_output, num_of_current_thread * sizeof(char *));
+            begin_device_call_memory();
+            cudaMallocTracked(&d_input, num_of_current_thread * sizeof(char *));
+            cudaMallocTracked(&d_output, num_of_current_thread * sizeof(char *));
 
             // --------------------------------------------------
             // Size arrays
@@ -1958,10 +2004,10 @@ void decompress(const char *destination_file, const char *source_file)
             size_t *d_input_size;
             size_t *d_output_size;
 
-            cudaMalloc(&d_input_size,
-                       num_of_current_thread * sizeof(size_t));
+            cudaMallocTracked(&d_input_size,
+                              num_of_current_thread * sizeof(size_t));
 
-            cudaMalloc((void **)&d_output_size, num_of_current_thread * sizeof(size_t));
+            cudaMallocTracked(&d_output_size, num_of_current_thread * sizeof(size_t));
             // --------------------------------------------------
             // Copy input sizes: HOST -> DEVICE
             // --------------------------------------------------
@@ -1989,7 +2035,7 @@ void decompress(const char *destination_file, const char *source_file)
             for (int i = 0; i < num_of_current_thread; i++)
             {
                 // Input
-                cudaMalloc(
+                cudaMallocTracked(
                     &temp_d_input[i],
                     input_size[i] * sizeof(char));
 
@@ -1997,7 +2043,7 @@ void decompress(const char *destination_file, const char *source_file)
                 //
                 // Currently output size == input size
                 // because your kernel only copies data.
-                cudaMalloc(
+                cudaMallocTracked(
                     &temp_d_output[i],
                     (uncompressed_size[i]) * sizeof(char));
 
@@ -2043,10 +2089,10 @@ void decompress(const char *destination_file, const char *source_file)
 
             ////////////////////paq9_cuda call///////////////////////////
 
-            std::cout << "Assigned block: " << blocks << endl;
+            // std::cout << "Assigned block: " << blocks << endl;
             threads = std::min(threads, (int)num_of_current_thread);
-            std::cout << "Assigned threads: " << threads << endl;
-            std::cout << "Total threads: " << blocks * threads << endl;
+            // std::cout << "Assigned threads: " << threads << endl;
+            // std::cout << "Total threads: " << blocks * threads << endl;
 
             paq9_cuda<<<blocks, threads>>>(
                 d_input_size,
@@ -2072,6 +2118,8 @@ void decompress(const char *destination_file, const char *source_file)
                           << cudaGetErrorString(err1) << '\n';
                 exit(1);
             }
+
+            finish_device_call_memory();
 
             // --------------------------------------------------
             // Copy output sizes: DEVICE -> HOST
@@ -2132,15 +2180,16 @@ void decompress(const char *destination_file, const char *source_file)
                 dest.write(output[i], output_size[i]);
                 total_input += input_size[i];
                 total_output += output_size[i];
-                std::cout << input_size[i] << " Byte -> " << output_size[i] << " Byte" << endl;
+                // std::cout << input_size[i] << " Byte -> " << output_size[i] << " Byte" << endl;
             }
-            std::cout << "From Device Call: " << total_input << " Byte -> " << total_output << " Byte" << endl;
+            // std::cout << "From Device Call: " << total_input << " Byte -> " << total_output << " Byte" << endl;
             total_compressed_size += total_input;
             total_uncompressed_size += total_output;
         }
         source.close();
         dest.close();
-        std::cout << "\n\nTotal " << total_compressed_size << " Byte -> " << total_uncompressed_size << " Byte" << endl;
+        std::cout << "Total: " << total_compressed_size << " Byte -> "
+              << total_uncompressed_size << " Byte" << endl;
     }
     else
     {
@@ -2178,6 +2227,9 @@ int main(int argc, char **args)
         std::cout << "Run again and provide arguments in correct way.\n";
         exit(1);
     }
+    std::cout << "Working mode: "
+              << (mode == COMPRESS ? "Compressing" : "Decompressing")
+              << endl;
     int ind = 2;
     if (mode == COMPRESS)
     {
@@ -2257,6 +2309,14 @@ int main(int argc, char **args)
     }
 
     cudaDeviceSynchronize(); // GPU কাজ শেষ হওয়া নিশ্চিত
+
+    std::cout << "Total GPU memory allocated: "
+              << maximum_device_call_memory << " bytes ("
+              << static_cast<double>(maximum_device_call_memory) / (1024 * 1024)
+              << " MiB)" << endl;
+    std::cout << "  cudaMalloc: " << maximum_cuda_malloc_for_device_call
+              << " bytes; device heap: " << maximum_device_heap_for_device_call
+              << " bytes" << endl;
 
     auto end = std::chrono::steady_clock::now();
 
