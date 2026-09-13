@@ -1,0 +1,20 @@
+PAQ9 is an sequential compression/decompression algorithm. It works in 3 stages. First stages: 
+Generate a prediction of next byte from the previous data and if the prediction byte matches the original byte.
+Then encode it using arithmatic encoder. If it does not match, then uses the context model and mixer. 
+
+
+PAQ9-CUDA is an parallel compression/decompression algorithm. It split the the file into many chunks. 
+Then, it compress the every indenpendent chunk using PAQ9 algorithm. The chunk are assigned to the GPU thread.
+Every thread works indenpendently and use the different memory space for processing the data and use the same 
+table which is used only for read. 
+
+
+This is the very begining version: v1.0.0
+
+The main function is takes two parameters. One is argument counter(int argc), another is array of string (char** args). 
+
+Windows:
+
+At first, Compile the program using **nvcc paq9-cuda.cu -o paq9_cuda**
+Compression: **paq9_cuda -c <destination_file> [-level] <source_file>**
+Decompression: **paq9_cuda -d <source_file> <destination_file>**
