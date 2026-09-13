@@ -1451,7 +1451,7 @@ void compress(char *destination_file, char *source_file)
 
     size_t maximumMemory;
     // maximumMemory = std::min(maximumFreeMemory, maximumHeapLimit);
-    maximumMemory = (size_t)4096 * 1024 * 1024; // 4GB
+    maximumMemory = 1024 * 1024 * 1024; // 1GB
     maximumMemory = 8 * maximumMemory / 10;
 
     std::ifstream source(source_file, std::ios::binary);
