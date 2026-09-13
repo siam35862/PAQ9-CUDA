@@ -1527,6 +1527,8 @@ void compress(char *destination_file, char *source_file)
                   << cudaGetErrorString(err) << '\n';
         exit(1);
     }
+    total_compressed_size = 0;
+    total_uncompressed_size = 0;
     for (int call_count = 0; call_count < device_call_count; call_count++)
     {
         std::cout << "\n\nDevice Call No: " << call_count + 1 << endl;
@@ -1665,13 +1667,19 @@ void compress(char *destination_file, char *source_file)
         cudaError_t err1;
         err1 = cudaGetLastError();
         if (err1 != cudaSuccess)
+        {
             std::cerr << "Launch error paq9: "
                       << cudaGetErrorString(err1) << '\n';
+            exit(1);
+        }
 
         err1 = cudaDeviceSynchronize();
         if (err1 != cudaSuccess)
+        {
             std::cerr << "Kernel error paq9: "
                       << cudaGetErrorString(err1) << '\n';
+            exit(1);
+        }
 
         // --------------------------------------------------
         // Copy output sizes: DEVICE -> HOST
@@ -1802,8 +1810,10 @@ char *get_input(std::istream &source, int size)
 }
 void decompress(const char *destination_file, const char *source_file)
 {
-    std::cout<<"Decompression is cooking......"<<endl;
+    std::cout << "Decompression is cooking......" << endl;
 
+    total_compressed_size = 0;
+    total_uncompressed_size = 0;
     constexpr size_t MB = 1024 * 1024;
 
     std::ifstream source(source_file, std::ios::binary);
@@ -2030,13 +2040,19 @@ void decompress(const char *destination_file, const char *source_file)
 
             cudaError_t err1 = cudaGetLastError();
             if (err1 != cudaSuccess)
+            {
                 std::cerr << "Launch error paq9: "
                           << cudaGetErrorString(err1) << '\n';
+                exit(1);
+            }
 
             err1 = cudaDeviceSynchronize();
             if (err1 != cudaSuccess)
+            {
                 std::cerr << "Kernel error paq9: "
                           << cudaGetErrorString(err1) << '\n';
+                exit(1);
+            }
 
             // --------------------------------------------------
             // Copy output sizes: DEVICE -> HOST
@@ -2226,7 +2242,6 @@ int main(int argc, char **args)
     std::cout << "Time Taken: "
               << seconds << " seconds\n";
     std::cout << "Compression/Decompression Speed: " << total_uncompressed_size / seconds / 1024 << " KB/seconds \n";
-
 
     return 0;
 }
