@@ -42,7 +42,7 @@ public:
         total_allocated_size = 0;
     }
     template <class T>
-    __device__ void alloc(T *&p, U32 allocate_size)
+    __device__ void alloc(T *&p, size_t allocate_size)
     {
         p = new T[allocate_size]();
         if (!p)
@@ -673,15 +673,15 @@ __device__ HashTable<B>::~HashTable()
         }
     }
 
-    printf("Thread No: %d :-HashTable<%d> %1.4f%% full, %1.4f%% utilized of %d KiB\n", get_tid(),
-           B, 100.0 * c0 * B / N, 100.0 * c / N, N >> 10);
+    // printf("Thread No: %d :-HashTable<%d> %1.4f%% full, %1.4f%% utilized of %d KiB\n", get_tid(),
+    //        B, 100.0 * c0 * B / N, 100.0 * c / N, N >> 10);
     delete[] raw_table; // must delete the original pointer, not the aligned one
     raw_table = table = 0;
 }
 
 ////////////////////////// LZP /////////////////////////
 
-__device__ U32 MEM = 1 << (22 + 1); // Global memory limit, 1 << 22+(memory option)
+__device__ size_t MEM = 1 << (22 + 1); // Global memory limit, 1 << 22+(memory option)
 __device__ inline bool isalpha_device(char ch)
 {
     return (ch >= 'A' && ch <= 'Z') ||
@@ -707,7 +707,7 @@ __device__ inline char tolower_device(char ch)
 class LZP
 {
 private:
-    const int N, H; // buffer, table size
+    const size_t N, H; // buffer, table size
     enum
     {
         MINLEN = 12
@@ -715,8 +715,8 @@ private:
     U8 *buf;               // Rotating buffer of size N
     U32 *table;            // Hash Table of pointers in high 24 bits, state in low 8 bits
     int match;             // start of match
-    int len;               // length of match
-    int pos;               // position of next char to write to buffer
+    size_t len;            // length of match
+    size_t pos;            // position of next char to write to buffer
     U32 hash;              // context hash
     U32 hash1;             // hash of last 8 bytes updates, shifting 4 bits to MSB
     U32 hash2;             // last 4 updates, shifting 8 bits to MSB
@@ -759,13 +759,13 @@ __device__ LZP::~LZP()
     int c = 0;
     for (int i = 0; i < H; ++i)
         c += (table[i] != 0);
-    printf("Thread No: %d :- LZP hash table %1.4f%% full of %d KiB\t"
-           "LZP buffer %1.4f%% full of %d KiB\n",
-           get_tid(),
-           100.0 * c / H, H >> 8, pos < N ? 100.0 * pos / N : 100.0, N >> 10);
-    printf("Thread No: %d :- LZP %d literals, %d matches (%1.4f%% matched)\n", get_tid(),
-           literals, matches,
-           literals + matches > 0 ? 100.0 * matches / (literals + matches) : 0.0);
+    // printf("Thread No: %d :- LZP hash table %1.4f%% full of %d KiB\t"
+    //        "LZP buffer %1.4f%% full of %d KiB\n",
+    //        get_tid(),
+    //        100.0 * c / H, H >> 8, pos < N ? 100.0 * pos / N : 100.0, N >> 10);
+    // printf("Thread No: %d :- LZP %d literals, %d matches (%1.4f%% matched)\n", get_tid(),
+    //        literals, matches,
+    //        literals + matches > 0 ? 100.0 * matches / (literals + matches) : 0.0);
     delete[] table;
     delete[] buf;
     table = 0;
@@ -792,7 +792,7 @@ __device__ int LZP::probability()
 {
     if (len < MINLEN)
         return 0;
-    int cxt = len;
+    int cxt = static_cast<int>(len);
     if (len > 28)
         cxt = 28 + (len >= 32) + (len >= 64) + (len >= 128);
     int pc = predict_char();
@@ -1001,7 +1001,7 @@ class Encoder
 private:
     const int mode; // Compress or decompress?
     char *inout;
-    int total_size;
+    size_t total_size;
 
     U32 x1, x2; // Range, initially [0, 1), scaled by 2^32
     U32 x;      // Decompress mode: last 4 input bytes of archive
@@ -1009,13 +1009,13 @@ private:
     {
         BUFSIZE = 0x20000
     };
-    unsigned char *buf; // Compression output buffer, size BUFSIZE
-    int usize, csize;   // Buffered uncompressed and compressed sizes
-    double usum, csum;  // Total of usize, csize
+    unsigned char *buf;  // Compression output buffer, size BUFSIZE
+    size_t usize, csize; // Buffered uncompressed and compressed sizes
+    double usum, csum;   // Total of usize, csize
 
 public:
-    int iterator_size;
-    __device__ Encoder(int m, char *temp, int tsz, int itr);
+    size_t iterator_size;
+    __device__ Encoder(int m, char *temp, size_t tsz, size_t itr);
     __device__ ~Encoder();   // frees buf (COMPRESS mode only; inout is not owned by Encoder)
     __device__ bool flush(); // call this when compression is finished
     __device__ bool put4(U32 c);
@@ -1059,8 +1059,8 @@ public:
 };
 
 // Create in mode m (COMPRESS or DECOMPRESS) with f opened as the archive.
-__device__ Encoder::Encoder(int m, char *temp, int tsz, int itr) : mode(m), inout(temp), total_size(tsz), iterator_size(itr), x1(0), x2(0xffffffff), x(0),
-                                                                   usize(0), csize(0), usum(0), csum(0)
+__device__ Encoder::Encoder(int m, char *temp, size_t tsz, size_t itr) : mode(m), inout(temp), total_size(tsz), iterator_size(itr), x1(0), x2(0xffffffff), x(0),
+                                                                         usize(0), csize(0), usum(0), csum(0)
 {
     int tid = get_tid();
     buf = 0;
@@ -1138,9 +1138,9 @@ __device__ bool Encoder::flush()
     return true;
 }
 
-__device__ int get4(int &itr, const char *in)
+__device__ size_t get4(size_t &itr, const char *in)
 {
-    int r = (unsigned char)in[itr++];
+    size_t r = (unsigned char)in[itr++];
     r = r * 256 + (unsigned char)in[itr++];
     r = r * 256 + (unsigned char)in[itr++];
     r = r * 256 + (unsigned char)in[itr++];
@@ -1164,9 +1164,9 @@ __global__ void init(int memory_level)
 
 __global__ void
 paq9_cuda(
-    int *input_size,
+    size_t *input_size,
     char **input,
-    int *output_size,
+    size_t *output_size,
     char **output,
     int num_of_chunks, int mode, int memory_level)
 {
@@ -1244,9 +1244,9 @@ paq9_cuda(
         }
         else
         {
-            int usize;
+            size_t usize;
             itr2 = 0;
-            int itr = 1;
+            size_t itr = 1;
             while (itr < input_size[tid])
             {
                 usize = get4(itr, input[tid]);
@@ -1536,7 +1536,7 @@ void compress(char *destination_file, char *source_file)
 
         char **src_file = new char *[num_of_current_thread];
 
-        std::vector<int> input_size(num_of_current_thread);
+        std::vector<size_t> input_size(num_of_current_thread);
 
         for (size_t i = 0; i < num_of_current_thread; i++)
         {
@@ -1565,13 +1565,13 @@ void compress(char *destination_file, char *source_file)
         // Size arrays
         // --------------------------------------------------
 
-        int *d_input_size;
-        int *d_output_size;
+        size_t *d_input_size;
+        size_t *d_output_size;
 
         cudaMalloc(&d_input_size,
-                   num_of_current_thread * sizeof(int));
+                   num_of_current_thread * sizeof(size_t));
 
-        cudaMalloc((void **)&d_output_size, num_of_current_thread * sizeof(int));
+        cudaMalloc((void **)&d_output_size, num_of_current_thread * sizeof(size_t));
         // --------------------------------------------------
         // Copy input sizes: HOST -> DEVICE
         // --------------------------------------------------
@@ -1579,7 +1579,7 @@ void compress(char *destination_file, char *source_file)
         cudaMemcpy(
             d_input_size,
             input_size.data(),
-            num_of_current_thread * sizeof(int),
+            num_of_current_thread * sizeof(size_t),
             cudaMemcpyHostToDevice);
 
         // --------------------------------------------------
@@ -1686,8 +1686,8 @@ void compress(char *destination_file, char *source_file)
         // --------------------------------------------------
 
         // FIX: Allocate memory for the host integer array before copying
-        int *output_size = (int *)malloc(num_of_current_thread * sizeof(int));
-        cudaMemcpy(output_size, d_output_size, num_of_current_thread * sizeof(int), cudaMemcpyDeviceToHost);
+        size_t *output_size = (size_t *)malloc(num_of_current_thread * sizeof(size_t));
+        cudaMemcpy(output_size, d_output_size, num_of_current_thread * sizeof(size_t), cudaMemcpyDeviceToHost);
 
         // --------------------------------------------------
         // Copy output chunks: DEVICE -> HOST
@@ -1732,7 +1732,7 @@ void compress(char *destination_file, char *source_file)
 
         // Inside your main writing logic:
 
-        int total_input = 0, total_output = 0;
+        size_t total_input = 0, total_output = 0;
         for (size_t i = 0; i < num_of_current_thread; i++)
         {
             total_input += input_size[i];
@@ -1800,7 +1800,7 @@ std::string get_file_name(std::istream &in)
 
     return file_name;
 }
-char *get_input(std::istream &source, int size)
+char *get_input(std::istream &source, size_t size)
 {
     char *input = new char[size];
 
@@ -1911,8 +1911,8 @@ void decompress(const char *destination_file, const char *source_file)
             int num_of_current_thread = std::min(maximumThreadPerDeviceCall, (num_of_chunks - call_count * maximumThreadPerDeviceCall));
 
             std::vector<char *> input(num_of_current_thread);
-            std::vector<int> input_size(num_of_current_thread);
-            std::vector<int> uncompressed_size(num_of_current_thread);
+            std::vector<size_t> input_size(num_of_current_thread);
+            std::vector<size_t> uncompressed_size(num_of_current_thread);
             for (int i = 0; i < num_of_current_thread; i++)
             {
                 uncompressed_size[i] = get4_stream(source);
@@ -1936,13 +1936,13 @@ void decompress(const char *destination_file, const char *source_file)
             // Size arrays
             // --------------------------------------------------
 
-            int *d_input_size;
-            int *d_output_size;
+            size_t *d_input_size;
+            size_t *d_output_size;
 
             cudaMalloc(&d_input_size,
-                       num_of_current_thread * sizeof(int));
+                       num_of_current_thread * sizeof(size_t));
 
-            cudaMalloc((void **)&d_output_size, num_of_current_thread * sizeof(int));
+            cudaMalloc((void **)&d_output_size, num_of_current_thread * sizeof(size_t));
             // --------------------------------------------------
             // Copy input sizes: HOST -> DEVICE
             // --------------------------------------------------
@@ -1950,7 +1950,7 @@ void decompress(const char *destination_file, const char *source_file)
             cudaMemcpy(
                 d_input_size,
                 input_size.data(),
-                num_of_current_thread * sizeof(int),
+                num_of_current_thread * sizeof(size_t),
                 cudaMemcpyHostToDevice);
 
             // --------------------------------------------------
@@ -2059,8 +2059,8 @@ void decompress(const char *destination_file, const char *source_file)
             // --------------------------------------------------
 
             // FIX: Allocate memory for the host integer array before copying
-            int *output_size = (int *)malloc(num_of_current_thread * sizeof(int));
-            cudaMemcpy(output_size, d_output_size, num_of_current_thread * sizeof(int), cudaMemcpyDeviceToHost);
+            size_t *output_size = (size_t *)malloc(num_of_current_thread * sizeof(size_t));
+            cudaMemcpy(output_size, d_output_size, num_of_current_thread * sizeof(size_t), cudaMemcpyDeviceToHost);
 
             // --------------------------------------------------
             // Copy output chunks: DEVICE -> HOST
@@ -2105,7 +2105,7 @@ void decompress(const char *destination_file, const char *source_file)
 
             // Inside your main writing logic:
 
-            int total_input = 0, total_output = 0;
+            size_t total_input = 0, total_output = 0;
             std::cout << "Compressed  ->  Decompressed \n";
             for (size_t i = 0; i < num_of_current_thread; i++)
             {
@@ -2115,7 +2115,7 @@ void decompress(const char *destination_file, const char *source_file)
                 total_output += output_size[i];
                 std::cout << input_size[i] << " Byte -> " << output_size[i] << " Byte" << endl;
             }
-            std::cout << "Per Device Call: " << total_input << " Byte -> " << total_output << " Byte" << endl;
+            std::cout << "From Device Call: " << total_input << " Byte -> " << total_output << " Byte" << endl;
             total_compressed_size += total_input;
             total_uncompressed_size += total_output;
         }
@@ -2178,7 +2178,7 @@ int main(int argc, char **args)
         {
             std::string temp;
 
-            int len = strlen(args[ind]);
+            size_t len = strlen(args[ind]);
             for (int i = 1; i < len; i++)
             {
                 if (isdigit(args[ind][i]))
@@ -2190,10 +2190,10 @@ int main(int argc, char **args)
                 }
             }
             level = stoi(temp);
-            if(level<1||level>11)
+            if (level < 1 || level > 11)
             {
-                level=1;
-                std::cout<<"Your provided level is not supported. It is set to default value 1.\n";
+                level = 1;
+                std::cout << "Your provided level is not supported. It is set to default value 1.\n";
             }
             ind++;
         }
