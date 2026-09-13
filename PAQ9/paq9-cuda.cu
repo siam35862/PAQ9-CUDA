@@ -1511,7 +1511,6 @@ void compress(char *destination_file, char *source_file)
 
     // device initialization
     init<<<1, 1>>>(memory_level);
-    cudaDeviceSynchronize();
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess)
     {
@@ -1523,7 +1522,7 @@ void compress(char *destination_file, char *source_file)
     err = cudaDeviceSynchronize();
     if (err != cudaSuccess)
     {
-        std::cerr << "Kernel error: "
+        std::cerr << "Initialization kernel error: "
                   << cudaGetErrorString(err) << '\n';
         exit(1);
     }
@@ -1881,7 +1880,6 @@ void decompress(const char *destination_file, const char *source_file)
 
         // device initialization
         init<<<1, 1>>>(memory_level);
-        cudaDeviceSynchronize();
         cudaError_t err = cudaGetLastError();
         if (err != cudaSuccess)
         {
@@ -1893,7 +1891,7 @@ void decompress(const char *destination_file, const char *source_file)
         err = cudaDeviceSynchronize();
         if (err != cudaSuccess)
         {
-            std::cerr << "Kernel error: "
+            std::cerr << "Initialization kernel error: "
                       << cudaGetErrorString(err) << '\n';
             exit(1);
         }
