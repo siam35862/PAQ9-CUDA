@@ -1451,7 +1451,7 @@ void compress(char *destination_file, char *source_file)
 
     size_t maximumMemory;
     // maximumMemory = std::min(maximumFreeMemory, maximumHeapLimit);
-    maximumMemory = 4095 * 1024 * 1024; // 1GB
+    maximumMemory = (size_t)4095 * 1024 * 1024; // 1GB
     maximumMemory = 8 * maximumMemory / 10;
     cudaDeviceSetLimit(cudaLimitMallocHeapSize, maximumMemory);
     cudaError_t err1;
