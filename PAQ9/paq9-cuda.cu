@@ -2190,6 +2190,11 @@ int main(int argc, char **args)
                 }
             }
             level = stoi(temp);
+            if(level<1||level>11)
+            {
+                level=1;
+                std::cout<<"Your provided level is not supported. It is set to default value 1.\n";
+            }
             ind++;
         }
         else if (ind >= argc)
