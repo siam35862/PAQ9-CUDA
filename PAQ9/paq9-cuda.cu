@@ -15,6 +15,7 @@ typedef unsigned int U32;
 
 // define
 #define MAX_THREADS 1024
+#define MAX_THREADS_PER_BLOCK 64
 #define COMPRESS 0
 #define DECOMPRESS 1
 #define endl std::endl
@@ -1641,7 +1642,7 @@ void compress(char *destination_file, char *source_file)
         // Launch kernel
         // --------------------------------------------------
 
-        int threads = 256;
+        int threads = MAX_THREADS_PER_BLOCK;
 
         int blocks =
             (num_of_current_thread + threads - 1) / threads;
@@ -2011,7 +2012,7 @@ void decompress(const char *destination_file, const char *source_file)
             // Launch kernel
             // --------------------------------------------------
 
-            int threads = 256;
+            int threads = MAX_THREADS_PER_BLOCK;
 
             int blocks =
                 (num_of_current_thread + threads - 1) / threads;
