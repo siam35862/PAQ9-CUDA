@@ -162,11 +162,22 @@ def compare_files(source: Path, decompressed: Path) -> tuple[str, str, str]:
         return "", "error", str(error)
 
 
-def run_command(command: list[str], run_number: int, total_runs: int) -> tuple[str, int]:
+def print_timed_line(message: str, benchmark_started: float) -> None:
+    """Print a permanent terminal line with the benchmark elapsed time."""
+    elapsed = time.monotonic() - benchmark_started
+    print(f"{message} [script elapsed: {elapsed:.0f}s]", flush=True)
+
+
+def run_command(
+    command: list[str],
+    run_number: int,
+    total_runs: int,
+    benchmark_started: float,
+) -> tuple[str, int]:
     """Run one benchmark command, echoing and retaining its terminal output."""
     # Merge stderr into stdout so CUDA errors are visible and retained for parsing.
     started = time.monotonic()
-    print("\n$ " + subprocess.list2cmdline(command), flush=True)
+    print_timed_line("\n$ " + subprocess.list2cmdline(command), benchmark_started)
     process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
@@ -182,11 +193,14 @@ def run_command(command: list[str], run_number: int, total_runs: int) -> tuple[s
     # A child process can buffer its C++ output when stdout is redirected to a pipe.
     # This heartbeat still shows that the benchmark is active during a long run.
     def report_progress() -> None:
-        while not stop_progress.wait(5):
-            elapsed = time.monotonic() - started
+        while not stop_progress.wait(1):
+            run_elapsed = time.monotonic() - started
+            script_elapsed = time.monotonic() - benchmark_started
             print(
-                f"[progress] run {run_number}/{total_runs} still running "
-                f"({elapsed:.0f}s elapsed)...",
+                f"\r[progress] run {run_number}/{total_runs} still running "
+                f"(run: {run_elapsed:.0f}s)"
+                f" [script elapsed: {script_elapsed:.0f}s]\033[K\r",
+                end="",
                 flush=True,
             )
 
@@ -194,21 +208,25 @@ def run_command(command: list[str], run_number: int, total_runs: int) -> tuple[s
     progress_thread.start()
     assert process.stdout is not None
     for line in process.stdout:
-        print(line, end="", flush=True)
+        # Add the timestamp only to the displayed line; keep the original line for parsing.
+        print_timed_line(line.rstrip("\r\n"), benchmark_started)
         output_lines.append(line)
     return_code = process.wait()
     stop_progress.set()
     progress_thread.join()
-    elapsed = time.monotonic() - started
-    print(
+    run_elapsed = time.monotonic() - started
+    script_elapsed = time.monotonic() - benchmark_started
+    # Finish the temporary heartbeat line, then print the permanent status normally.
+    print("\r\033[K", end="", flush=True)
+    print_timed_line(
         f"[progress] run {run_number}/{total_runs} finished with exit code "
-        f"{return_code} ({elapsed:.2f}s).",
-        flush=True,
+        f"{return_code} (run: {run_elapsed:.2f}s)",
+        benchmark_started,
     )
     return "".join(output_lines), return_code
 
 
-def print_run_result(row: dict[str, str]) -> None:
+def print_run_result(row: dict[str, str], benchmark_started: float) -> None:
     """Print the parsed result immediately after one operation finishes."""
     result_fields = [
         "operation",
@@ -235,15 +253,16 @@ def print_run_result(row: dict[str, str]) -> None:
         "comparison_status",
         "comparison_error",
     ]
-    print(f"[result] run {row['run']}/{22}", flush=True)
+    print_timed_line(f"[result] run {row['run']}/{22}", benchmark_started)
     for field in result_fields:
         value = row.get(field, "")
         if value != "":
-            print(f"  {field}: {value}", flush=True)
+            print_timed_line(f"  {field}: {value}", benchmark_started)
 
 
 def benchmark(args: argparse.Namespace) -> None:
     # Create the CSV folder if it does not exist, then run 11 compression/decompression pairs.
+    benchmark_started = time.monotonic()
     args.csv.parent.mkdir(parents=True, exist_ok=True)
     rows = []
     run_number = 0
@@ -251,7 +270,10 @@ def benchmark(args: argparse.Namespace) -> None:
 
     for level in range(1, 12):
         run_number += 1
-        print(f"\n[progress] starting run {run_number}/{total_runs}: compression -{level}", flush=True)
+        print_timed_line(
+            f"\n[progress] starting run {run_number}/{total_runs}: compression -{level}",
+            benchmark_started,
+        )
         compression_command = [
             str(args.executable),
             "-c",
@@ -260,7 +282,7 @@ def benchmark(args: argparse.Namespace) -> None:
             str(args.source),
         ]
         compression_output, compression_code = run_command(
-            compression_command, run_number, total_runs
+            compression_command, run_number, total_runs, benchmark_started
         )
         compression_row = {field: "" for field in CSV_FIELDS}
         compression_row.update(parse_output(compression_output))
@@ -273,12 +295,15 @@ def benchmark(args: argparse.Namespace) -> None:
                 "status": "ok" if compression_code == 0 else "failed",
             }
         )
-        print_run_result(compression_row)
+        print_run_result(compression_row, benchmark_started)
         rows.append(compression_row)
 
         # Decompress immediately after this level before starting the next compression level.
         run_number += 1
-        print(f"\n[progress] starting run {run_number}/{total_runs}: decompression after -{level}", flush=True)
+        print_timed_line(
+            f"\n[progress] starting run {run_number}/{total_runs}: decompression after -{level}",
+            benchmark_started,
+        )
         decompression_command = [
             str(args.executable),
             "-d",
@@ -286,7 +311,7 @@ def benchmark(args: argparse.Namespace) -> None:
             str(args.decompressed),
         ]
         decompression_output, decompression_code = run_command(
-            decompression_command, run_number, total_runs
+            decompression_command, run_number, total_runs, benchmark_started
         )
         decompression_row = {field: "" for field in CSV_FIELDS}
         decompression_row.update(parse_output(decompression_output))
@@ -313,7 +338,7 @@ def benchmark(args: argparse.Namespace) -> None:
             )
         else:
             decompression_row["comparison_status"] = "skipped_decompression_failed"
-        print_run_result(decompression_row)
+        print_run_result(decompression_row, benchmark_started)
         rows.append(decompression_row)
 
     with args.csv.open("w", newline="", encoding="utf-8") as csv_file:
@@ -321,7 +346,7 @@ def benchmark(args: argparse.Namespace) -> None:
         writer = csv.DictWriter(csv_file, fieldnames=CSV_FIELDS)
         writer.writeheader()
         writer.writerows(rows)
-    print(f"\nBenchmark complete. CSV written to: {args.csv}")
+    print_timed_line(f"\nBenchmark complete. CSV written to: {args.csv}", benchmark_started)
 
 
 def parse_args() -> argparse.Namespace:
