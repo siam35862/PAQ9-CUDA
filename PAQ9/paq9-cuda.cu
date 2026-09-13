@@ -1446,11 +1446,12 @@ void compress(char *destination_file, char *source_file)
 {
     std::cout << "Compression cooking........." << endl;
 
-    maximumHeapLimit = getMaximumHeapLimit();
-    maximumFreeMemory = getMaximumFreeMemory();
+    // maximumHeapLimit = getMaximumHeapLimit();
+    // maximumFreeMemory = getMaximumFreeMemory();
 
-    size_t maximumMemory = std::min(maximumFreeMemory, maximumHeapLimit);
-
+    size_t maximumMemory;
+    // maximumMemory = std::min(maximumFreeMemory, maximumHeapLimit);
+    maximumMemory = (size_t)4096 * 1024 * 1024; // 4GB
     maximumMemory = 8 * maximumMemory / 10;
 
     std::ifstream source(source_file, std::ios::binary);
