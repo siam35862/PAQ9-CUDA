@@ -2,3 +2,5 @@
 *.exe
 PAQ9/paq9-cuda
 *.paq9
+PAQ9/paq9-cuda-v1.0
+PAQ9/paq9-cuda-v1.1
