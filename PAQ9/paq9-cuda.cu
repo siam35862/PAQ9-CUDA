@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstring> // For strlen
 #include <assert.h>
+#include <cstdint>
 
 // typedef
 //  8, 16, 32 bit unsigned types (adjust as appropriate)
@@ -633,7 +634,7 @@ __device__ HashTable<B>::HashTable(int n) : table(0), raw_table(0), N(n)
     assert(N >= B * 4 && (N & N - 1) == 0);
     allocator[get_tid()]->alloc(table, N + B * 4 + 64);
     raw_table = table;                     // remember true allocation address
-    table += 64 - int(((long)table) & 63); // align on cache line boundary
+    table += 64 - int(reinterpret_cast<uintptr_t>(table) & 63); // align on cache line boundary
 }
 
 template <int B>
