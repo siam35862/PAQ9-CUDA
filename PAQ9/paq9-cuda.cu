@@ -16,7 +16,7 @@ typedef unsigned int U32;
 
 // define
 #define MAX_THREADS 1024
-#define MAX_THREADS_PER_BLOCK 64
+#define MAX_THREADS_PER_BLOCK 256
 #define COMPRESS 0
 #define DECOMPRESS 1
 #define endl std::endl
