@@ -36,9 +36,15 @@ unsigned char *encoder_buffer[MAX_THREADS];
 template <typename T>
 cudaError_t cudaMallocTracked(T **pointer, size_t size)
 {
-    cudaError_t result = cudaMalloc(pointer, size);
+    cudaError_t result = cudaMallocManaged(pointer, size);
     if (result == cudaSuccess)
+    {
         total_cuda_malloc_allocated += size;
+    }
+    else
+    {
+        std::cout << "CudaMallocError to allocated with size : " << size << endl;
+    }
     return result;
 }
 
@@ -1205,7 +1211,7 @@ __global__ void init(int thread_count, ThreadBuffers *buffers, int memory_level)
         APM *predictor_apm1 = new APM(buffer.predictor_apm[0], 0x10000);
         APM *predictor_apm2 = new APM(buffer.predictor_apm[1], 0x10000);
         APM *predictor_apm3 = new APM(buffer.predictor_apm[2], 0x10000);
-        HashTable<16> *predictor_hashtable = new HashTable<16>(MEM / 2 + 128, buffer.predictor_hashtable);
+        HashTable<16> *predictor_hashtable = new HashTable<16>(MEM / 2, buffer.predictor_hashtable);
         predictor[tid] = new Predictor(buffer.predictor_context1, predictor_statemap, predictor_mix, predictor_apm1, predictor_apm2, predictor_apm3, predictor_hashtable);
 
         // use mine.lzp_statemap, mine.predictor_hashtable, etc. here
@@ -1230,9 +1236,9 @@ void memoryAllocationForThread(int thread_count)
 
     for (int i = 0; i < thread_count; i++)
     {
-        cudaMallocTracked(&buffers[i].lzp_statemap, 0x200 * sizeof(U32));
+        cudaMallocTracked(&buffers[i].lzp_statemap, 512 * sizeof(U32)); // 0x200
 
-        cudaMallocTracked(&buffers[i].lzp_apm[0], 0x20000 * sizeof(int));
+        cudaMallocTracked(&buffers[i].lzp_apm[0], 131072 * sizeof(int)); // 0x20000
         cudaMallocTracked(&buffers[i].lzp_apm[1], 0x80000 * sizeof(int));
         cudaMallocTracked(&buffers[i].lzp_apm[2], 0x200000 * sizeof(int));
 
@@ -1450,6 +1456,7 @@ void compress(char *destination_file, char *source_file)
                   << cudaGetErrorString(err) << '\n';
         exit(1);
     }
+    std::cout << "passed" << endl;
 
     total_compressed_size = 0;
     total_uncompressed_size = 0;
@@ -1589,6 +1596,23 @@ void compress(char *destination_file, char *source_file)
 
         // Device Initialization
         deviceIntialization(num_of_current_thread);
+        cudaDeviceSynchronize();
+        cudaError_t err1;
+        err1 = cudaGetLastError();
+        if (err1 != cudaSuccess)
+        {
+            std::cerr << "Launch error during initialization: "
+                      << cudaGetErrorString(err1) << '\n';
+            exit(1);
+        }
+
+        err1 = cudaDeviceSynchronize();
+        if (err1 != cudaSuccess)
+        {
+            std::cerr << "Kernel error during initialization: "
+                      << cudaGetErrorString(err1) << '\n';
+            exit(1);
+        }
 
         ////////////////////paq9_cuda call////////////////////////////
 
@@ -1600,7 +1624,6 @@ void compress(char *destination_file, char *source_file)
             num_of_current_thread, COMPRESS, memory_level);
 
         cudaDeviceSynchronize();
-        cudaError_t err1;
         err1 = cudaGetLastError();
         if (err1 != cudaSuccess)
         {
