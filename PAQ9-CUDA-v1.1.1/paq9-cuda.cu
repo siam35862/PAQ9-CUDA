@@ -814,14 +814,11 @@ __device__ Encoder::Encoder(int m, char *temp, unsigned char *buffer_ptr, size_t
     // else if (!buf)
     //     allocator[tid]->alloc(buf, BUFSIZE);
 }
-
 __device__ Encoder::~Encoder()
 {
-    if (mode == COMPRESS && buffer)
-    {
-        delete[] buffer;
-        buffer = 0;
-    }
+    // buffer is encoder_buffer[tid], a cudaMalloc'd buffer owned by the host;
+    // it is freed once via cudaFree in memoryDeallocationForThread, not here.
+    buffer = 0;
     // inout is owned by the caller (points into the chunk's device buffer) - never freed here.
 }
 
