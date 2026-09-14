@@ -1518,13 +1518,13 @@ void compress(char *destination_file, char *source_file)
         // FIX: Allocate memory for each specific chunk array before copying
         output[i] = new char[chunk_B + 2];
     }
-
+    char **src_file = new char *[num_of_thread];
+    for (int i = 0; i < num_of_thread; i++)
+        src_file[i] = nullptr;
     for (int call_count = 0; call_count < device_call_count; call_count++)
     {
         // std::cout << "\n\nDevice Call No: " << call_count + 1 << endl;
         int num_of_current_thread = std::min(maximum_thread_per_device_call, (num_of_chunks - call_count * maximum_thread_per_device_call));
-
-        char **src_file = new char *[num_of_current_thread];
 
         std::vector<size_t> input_size(num_of_current_thread);
 
@@ -1533,6 +1533,8 @@ void compress(char *destination_file, char *source_file)
             size_t current_B =
                 min(chunk_B, total_B - ((call_count * maximum_thread_per_device_call) + i) * chunk_B);
 
+            if (src_file[i] != nullptr)
+                delete[] src_file[i];
             src_file[i] = new char[current_B];
 
             source.read(src_file[i], current_B);
@@ -1671,6 +1673,15 @@ void compress(char *destination_file, char *source_file)
         total_compressed_size += total_output;
         total_uncompressed_size += total_input;
     }
+    for (int i = 0; i < num_of_thread; i++)
+    {
+        if (src_file[i] != nullptr)
+            delete[] src_file[i];
+        delete[] output[i];
+    }
+    delete[] src_file;
+    delete[] output;
+    free(output_size);
     source.close();
     dest.close();
     // --------------------------------------------------
@@ -1919,7 +1930,7 @@ void decompress(const char *destination_file, const char *source_file)
             // FIX: Allocate memory for each specific chunk array before copying
             output[i] = new char[chunk_B];
         }
-
+        std::vector<char *> input(num_of_thread, nullptr);
         // output file configuration
         std::ofstream dest(destination_file, std::ios::binary);
         if (!dest)
@@ -1927,16 +1938,18 @@ void decompress(const char *destination_file, const char *source_file)
             std::cout << std::string(destination_file) << " does not created/opened.\n";
             exit(1);
         }
+
         for (int call_count = 0; call_count < device_call_count; call_count++)
         {
             // std::cout << "\n\nDevice Call No: " << call_count + 1 << endl;
             int num_of_current_thread = std::min(maximum_thread_per_device_call, (num_of_chunks - call_count * maximum_thread_per_device_call));
 
-            std::vector<char *> input(num_of_current_thread);
             std::vector<size_t> input_size(num_of_current_thread);
             std::vector<size_t> uncompressed_size(num_of_current_thread);
             for (int i = 0; i < num_of_current_thread; i++)
             {
+                if (input[i] != nullptr)
+                    delete[] input[i];
                 uncompressed_size[i] = get4_stream(source);
                 input_size[i] = get4_stream(source);
                 input[i] = get_input(source, input_size[i]);
@@ -2061,6 +2074,17 @@ void decompress(const char *destination_file, const char *source_file)
             total_compressed_size += total_input;
             total_uncompressed_size += total_output;
         }
+
+        for (size_t i = 0; i < input.size(); ++i)
+        {
+            if (input[i] != nullptr)
+                delete[] input[i];
+            if (output[i] != nullptr)
+                delete[] output[i];
+        }
+        free(output_size);
+        delete[] output;
+
         source.close();
         dest.close();
         std::cout << "Total: " << total_compressed_size << " Byte -> "
