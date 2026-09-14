@@ -238,7 +238,8 @@ __device__ StateMap::StateMap(U32 *prediction_table_ptr, int n) : prediction_tab
 
 __device__ StateMap::~StateMap()
 {
-    delete[] prediction_table;
+    // prediction_table points to a cudaMalloc-backed device buffer owned by
+    // ThreadBuffers; it is freed by the host-side cudaFree path, not here.
     prediction_table = 0;
 }
 
@@ -299,7 +300,7 @@ __device__ Mix::Mix(int *weight_ptr, int n) : wt(weight_ptr), N(n), x1(0), x2(0)
 
 __device__ Mix::~Mix()
 {
-    delete[] wt;
+    // wt is backed by cudaMalloc in ThreadBuffers and is released from the host.
     wt = 0;
 }
 
@@ -403,21 +404,8 @@ __device__ U8 *HashTable<B>::operator[](U32 i)
 template <int B>
 __device__ HashTable<B>::~HashTable()
 {
-    int c = 0, c0 = 0;
-    for (U32 i = 0; i < N; ++i)
-    {
-        if (table[i])
-        {
-            ++c;
-            if (i % B == 0)
-                ++c0;
-        }
-    }
-
-    // printf("Thread No: %d :-HashTable<%d> %1.4f%% full, %1.4f%% utilized of %d KiB\n", get_tid(),
-    //        B, 100.0 * c0 * B / N, 100.0 * c / N, N >> 10);
-    delete[] raw_table; // must delete the original pointer, not the aligned one
-    delete[] table;
+    // The underlying storage is a cudaMalloc buffer owned by ThreadBuffers and
+    // released via the host-side cudaFree path. Do not delete it here.
     raw_table = table = 0;
 }
 
@@ -500,22 +488,16 @@ __device__ LZP::LZP(StateMap *statemap, U8 *buf, U32 *tab, APM *apm1, APM *apm2,
 // Print statistics
 __device__ LZP::~LZP()
 {
-    int c = 0;
-    for (int i = 0; i < H; ++i)
-        c += (table[i] != 0);
-    // printf("Thread No: %d :- LZP hash table %1.4f%% full of %d KiB\t"
-    //        "LZP buffer %1.4f%% full of %d KiB\n",
-    //        get_tid(),
-    //        100.0 * c / H, H >> 8, pos < N ? 100.0 * pos / N : 100.0, N >> 10);
-    // printf("Thread No: %d :- LZP %d literals, %d matches (%1.4f%% matched)\n", get_tid(),
-    //        literals, matches,
-    //        literals + matches > 0 ? 100.0 * matches / (literals + matches) : 0.0);
-    delete[] table;
-    delete[] buffer;
+    // These are C++ objects created with new in init(), not cudaMalloc buffers.
+    delete statemap;
+    delete apm1;
+    delete apm2;
+    delete apm3;
+
+    // The working buffers (table, buffer) are owned by ThreadBuffers and are
+    // freed by the host-side cudaFree path, not by this destructor.
     table = 0;
     buffer = 0;
-    // statemap1 and apm1/apm2/apm3 are member objects, not pointers:
-    // their own destructors run automatically and free their internals.
 }
 
 // Predicted next byte, or -1 for no prediction
@@ -643,7 +625,18 @@ __device__ Predictor::Predictor(U8 *context1_ptr, StateMap *statemap1[N], Mix *m
 // (allocated directly by Predictor) needs freeing here.
 __device__ Predictor::~Predictor()
 {
-    delete[] context1;
+    // The context1 buffer is owned by ThreadBuffers and is released by the host.
+    // Delete only the C++ sub-objects that were created with new in init().
+    for (int i = 0; i < N; ++i)
+    {
+        delete statemap[i];
+        if (i < N - 1)
+            delete mix[i];
+    }
+    delete apm1;
+    delete apm2;
+    delete apm3;
+    delete hashtable;
     context1 = 0;
 }
 
