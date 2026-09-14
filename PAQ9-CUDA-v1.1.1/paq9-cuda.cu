@@ -29,33 +29,9 @@ size_t total_compressed_size = 0;
 size_t maximum_heap_limit = 8;     // default heap limit
 size_t maximum_free_memory = 1024; // default consider 1GB memory has free
 
-__device__ unsigned long long device_call_heap_allocated = 0;
 unsigned long long current_cuda_malloc_allocated = 0;
-unsigned long long maximum_device_call_memory = 0;
-unsigned long long maximum_cuda_malloc_for_device_call = 0;
-unsigned long long maximum_device_heap_for_device_call = 0;
 
-void begin_device_call_memory()
-{
-    unsigned long long zero = 0;
-    current_cuda_malloc_allocated = 0;
-    cudaMemcpyToSymbol(device_call_heap_allocated, &zero, sizeof(zero));
-}
-
-void finish_device_call_memory()
-{
-    unsigned long long device_heap_allocated = 0;
-    cudaMemcpyFromSymbol(&device_heap_allocated, device_call_heap_allocated,
-                         sizeof(device_heap_allocated));
-    unsigned long long device_call_memory =
-        current_cuda_malloc_allocated + device_heap_allocated;
-    if (device_call_memory > maximum_device_call_memory)
-    {
-        maximum_device_call_memory = device_call_memory;
-        maximum_cuda_malloc_for_device_call = current_cuda_malloc_allocated;
-        maximum_device_heap_for_device_call = device_heap_allocated;
-    }
-}
+unsigned char *encoder_buffer[MAX_THREADS];
 
 template <typename T>
 cudaError_t cudaMallocTracked(T **pointer, size_t size)
@@ -385,17 +361,17 @@ class HashTable
     const U32 N;   // size in bytes
 
 public:
-    __device__ HashTable(int n);
+    __device__ HashTable(int n, U8 *table_ptr);
     __device__ ~HashTable();
     __device__ U8 *operator[](U32 i);
 };
 
 template <int B>
-__device__ HashTable<B>::HashTable(int n) : table(0), raw_table(0), N(n)
+__device__ HashTable<B>::HashTable(int n, U8 *table_ptr) : table(table_ptr), raw_table(0), N(n)
 {
     assert(B >= 2 && (B & B - 1) == 0);
     assert(N >= B * 4 && (N & N - 1) == 0);
-    allocator[get_tid()]->alloc(table, N + B * 4 + 64);
+    // allocator[get_tid()]->alloc(table, N + B * 4 + 64);
     raw_table = table;                                          // remember true allocation address
     table += 64 - int(reinterpret_cast<uintptr_t>(table) & 63); // align on cache line boundary
 }
@@ -629,31 +605,36 @@ class Predictor
     {
         N = 11
     }; // number of contexts
-    int c0;                  // last 0-7 bits with leading 1, 0 before LZP flag
-    int nibble;              // last 0-3 bits with leading 1 (1..15)
-    int bcount;              // number of bits in c0 (0..7)
-    HashTable<16> hashtable; // context -> state
-    StateMap *statemap;      // state -> prediction, N size
-    U8 *cp[N];               // i -> state array of bit histories for i'th context
-    U8 *sp[N];               // i -> pointer to bit history for i'th context
-    Mix *mix;                //[N - 1];          // combines 2 predictions given a context
-    APM *apm1, *apm2, *apm3; // adjusts a prediction given a context
-    U8 *context1;            // order 1 contexts -> state
+    int c0;                   // last 0-7 bits with leading 1, 0 before LZP flag
+    int nibble;               // last 0-3 bits with leading 1 (1..15)
+    int bcount;               // number of bits in c0 (0..7)
+    HashTable<16> *hashtable; // context -> state
+    StateMap *statemap[N];    // state -> prediction, N size
+    U8 *cp[N];                // i -> state array of bit histories for i'th context
+    U8 *sp[N];                // i -> pointer to bit history for i'th context
+    Mix *mix[N - 1];          //[N - 1];          // combines 2 predictions given a context
+    APM *apm1, *apm2, *apm3;  // adjusts a prediction given a context
+    U8 *context1;             // order 1 contexts -> state
 
 public:
-    __device__ Predictor(U8 *context1_ptr, StateMap *statemap1, APM *apm1, APM *apm2, APM *apm3);
+    __device__ Predictor(U8 *context1_ptr, StateMap *statemap1[N], Mix *mix1[N - 1], APM *apm1, APM *apm2, APM *apm3, HashTable<16> *hashtable_ptr);
     __device__ ~Predictor(); // frees context1; member destructors free hashtable/statemap/mix/apm
     __device__ int predict_next_bit();
     __device__ void update(int y);
 };
 
 // Initialize
-__device__ Predictor::Predictor(U8 *context1_ptr, StateMap *statemap1, APM *apm1, APM *apm2, APM *apm3) : c0(0), context1(context1_ptr), nibble(1), bcount(0), hashtable(MEM / 2),
-                                                                                                          apm1(apm1), apm2(apm2), apm3(apm3)
+__device__ Predictor::Predictor(U8 *context1_ptr, StateMap *statemap1[N], Mix *mix1[N - 1], APM *apm1, APM *apm2, APM *apm3, HashTable<16> *hashtable_ptr) : c0(0), context1(context1_ptr), nibble(1), bcount(0),
+                                                                                                                                                             apm1(apm1), apm2(apm2), apm3(apm3), hashtable(hashtable_ptr)
 {
     // allocator[get_tid()]->alloc(context1, 0x40000);
     for (int i = 0; i < N; ++i)
+    {
         sp[i] = cp[i] = context1;
+        statemap[i] = statemap1[i];
+        if (i < N - 1)
+            mix[i] = mix1[i];
+    }
 }
 
 // hashtable, statemap[N], mix[N-1] and apm1/apm2/apm3 free themselves via
@@ -677,12 +658,12 @@ __device__ void Predictor::update(int y)
     else
     {
         *sp[0] = nex(*sp[0], y);
-        statemap[0].update(y);
+        statemap[0]->update(y);
         for (int i = 1; i < N; ++i)
         {
             *sp[i] = nex(*sp[i], y);
-            statemap[i].update(y);
-            mix[i - 1].update(y);
+            statemap[i]->update(y);
+            mix[i - 1]->update(y);
         }
         c0 += c0 + y;
         bcount++;
@@ -722,24 +703,24 @@ __device__ int Predictor::predict_next_bit()
                 cp[2] = context1 + (c4 & 0xff00) + 0x20000;
                 cp[3] = context1 + (c4 << 8 & 0xff00) + 0x30000;
             }
-            cp[4] = hashtable[(c4p & 0xffff00) - c0];
-            cp[5] = hashtable[(c4p & 0xffffff00) * 3 + c0];
-            cp[6] = hashtable[c4 * 7 + c0];
-            cp[7] = hashtable[(c8 * 5 & 0xfffffc) + c0];
-            cp[8] = hashtable[(c8 * 11 & 0xffffff0) + c0 + pc * 13];
-            cp[9] = hashtable[lzp[tid]->word0 * 5 + c0 + pc * 17];
-            cp[10] = hashtable[lzp[tid]->word1 * 7 + lzp[tid]->word0 * 11 + c0 + pc * 37];
+            cp[4] = hashtable->operator[]((c4p & 0xffff00) - c0);
+            cp[5] = hashtable->operator[]((c4p & 0xffffff00) * 3 + c0);
+            cp[6] = hashtable->operator[](c4 * 7 + c0);
+            cp[7] = hashtable->operator[]((c8 * 5 & 0xfffffc) + c0);
+            cp[8] = hashtable->operator[]((c8 * 11 & 0xffffff0) + c0 + pc * 13);
+            cp[9] = hashtable->operator[]((lzp[tid]->word0 * 5 + c0 + pc * 17));
+            cp[10] = hashtable->operator[]((lzp[tid]->word1 * 7 + lzp[tid]->word0 * 11 + c0 + pc * 37));
         }
 
         // Mix predictions
         r <<= 8;
         sp[0] = &cp[0][c0];
-        int pr = stretch->operator()(statemap[0].predict_next_bit(*sp[0]));
+        int pr = stretch->operator()(statemap[0]->predict_next_bit(*sp[0]));
         for (int i = 1; i < N; ++i)
         {
             sp[i] = &cp[i][i < 4 ? c0 : nibble];
             int st = *sp[i];
-            pr = mix[i - 1].prediction(pr, stretch->operator()(statemap[i].predict_next_bit(st)), st + r) * 3 + pr >> 2;
+            pr = mix[i - 1]->prediction(pr, stretch->operator()(statemap[i]->predict_next_bit(st)), st + r) * 3 + pr >> 2;
         }
         pr = apm1->prediction(512, pr * 2, c0 + pc * 256 & 0xffff) * 3 + pr >> 2; // Adjust prediction
         pr = apm2->prediction(512, pr * 2, c4 << 8 & 0xff00 | c0) * 3 + pr >> 2;
@@ -776,13 +757,13 @@ private:
     {
         BUFSIZE = 0x20000
     };
-    unsigned char *buffer; // Compression output buffer, size BUFSIZE
-    size_t usize, csize;   // Buffered uncompressed and compressed sizes
-    double usum, csum;     // Total of usize, csize
+    U8 *buffer;          // Compression output buffer, size BUFSIZE
+    size_t usize, csize; // Buffered uncompressed and compressed sizes
+    double usum, csum;   // Total of usize, csize
 
 public:
     size_t iterator_size;
-    __device__ Encoder(int m, char *temp,unsigned char *buffer_ptr, size_t tsz, size_t itr);
+    __device__ Encoder(int m, char *temp, unsigned char *buffer_ptr, size_t tsz, size_t itr);
     __device__ ~Encoder();   // frees buf (COMPRESS mode only; inout is not owned by Encoder)
     __device__ bool flush(); // call this when compression is finished
     __device__ bool put4(U32 c);
@@ -826,8 +807,8 @@ public:
 };
 
 // Create in mode m (COMPRESS or DECOMPRESS) with f opened as the archive.
-__device__ Encoder::Encoder(int m, char *temp, unsigned char *buffer_ptr, size_t tsz, size_t itr) : mode(m), inout(temp),buffer(buffer_ptr), total_size(tsz), iterator_size(itr), x1(0), x2(0xffffffff), x(0),
-                                                                         usize(0), csize(0), usum(0), csum(0)
+__device__ Encoder::Encoder(int m, char *temp, unsigned char *buffer_ptr, size_t tsz, size_t itr) : mode(m), inout(temp), buffer(buffer_ptr), total_size(tsz), iterator_size(itr), x1(0), x2(0xffffffff), x(0),
+                                                                                                    usize(0), csize(0), usum(0), csum(0)
 {
     int tid = get_tid();
     if (mode == DECOMPRESS)
@@ -914,8 +895,6 @@ __device__ size_t get4(size_t &itr, const char *in)
     return r;
 }
 
-
-
 __global__ void
 paq9_cuda(
     size_t *input_size,
@@ -930,9 +909,6 @@ paq9_cuda(
     if (tid >= num_of_chunks)
         return;
     output_size[tid] = 100;
-
-    predictor[tid] = new Predictor();
-    lzp[tid] = new LZP();
 
     // printf("%8d KiB\b\b\b\b\b\b\b\b\b\b\b\b", allocated >> 10);
 
@@ -1038,7 +1014,6 @@ paq9_cuda(
     delete lzp[tid];
     predictor[tid] = 0;
     lzp[tid] = 0;
-
 }
 void put4(U32 c, int &iterator_size, char *inout)
 {
@@ -1194,23 +1169,106 @@ size_t getMaximumFreeMemory()
     return free_byte;
 }
 
-__global__ void init(int memory_level)
+struct ThreadBuffers
 {
-    // blockDim.x == 0 বাদ দেওয়া হয়েছে
-    if (blockIdx.x == 0 && threadIdx.x == 0)
+    U32 *lzp_statemap;
+    int *lzp_apm[3];
+    U8 *lzp_buffer;
+    U32 *lzp_table;
+
+    U32 *predictor_statemap[11];
+    int *predictor_mix[10];
+    int *predictor_apm[3];
+    U8 *predictor_hashtable;
+    U8 *predictor_context1;
+};
+__global__ void init(int memory_level, U8 *log_table)
+{
+    int tid = get_tid();
+    if (tid == 0)
     {
+        MEM = 1 << (22 + memory_level);
         squash = new Squash();
         stretch = new Stretch();
-        ilog = new Ilog();
-        MEM = 1 << (22 + memory_level);
-        delete allocator[get_tid()];
+        ilog = new Ilog(log_table);
     }
 }
+__global__ void init(int thread_count, ThreadBuffers *buffers, int memory_level)
+{
+    int tid = get_tid();
+    if (tid < thread_count)
+    {
+        ThreadBuffers &buffer = buffers[tid];
+        StateMap *lzp_statemap = new StateMap(buffer.lzp_statemap, 0x200);
+        APM *lzp_apm1 = new APM(buffer.lzp_apm[0], 0x10000);
+        APM *lzp_apm2 = new APM(buffer.lzp_apm[1], 0x40000);
+        APM *lzp_apm3 = new APM(buffer.lzp_apm[2], 0x100000);
+        lzp[tid] = new LZP(lzp_statemap, buffer.lzp_buffer, buffer.lzp_table, lzp_apm1, lzp_apm2, lzp_apm3);
 
+        StateMap *predictor_statemap[11];
+        for (int j = 0; j < 11; j++)
+            predictor_statemap[j] = new StateMap(buffer.predictor_statemap[j], 0x100);
+        Mix *predictor_mix[10];
+        for (int j = 0; j < 10; j++)
+            predictor_mix[j] = new Mix(buffer.predictor_mix[j], 0x400);
+        APM *predictor_apm1 = new APM(buffer.predictor_apm[0], 0x10000);
+        APM *predictor_apm2 = new APM(buffer.predictor_apm[1], 0x10000);
+        APM *predictor_apm3 = new APM(buffer.predictor_apm[2], 0x10000);
+        HashTable<16> *predictor_hashtable = new HashTable<16>(MEM / 2 + 128, buffer.predictor_hashtable);
+        predictor[tid] = new Predictor(buffer.predictor_context1, predictor_statemap, predictor_mix, predictor_apm1, predictor_apm2, predictor_apm3, predictor_hashtable);
+
+        // use mine.lzp_statemap, mine.predictor_hashtable, etc. here
+    }
+}
+ThreadBuffers *buffers;
 void memoryAllocationForThread(int thread_count)
 {
-    U8* log_table;
+
+    U8 *log_table;
     cudaMallocTracked(&log_table, 65536 * sizeof(U8));
+    init<<<1, 1>>>(memory_level, log_table);
+    cudaDeviceSynchronize();
+
+    U32 MEM_host = 1U << (22 + memory_level); // compute on host, don't rely on device write
+
+    // one struct per thread, but the ARRAY of structs must itself be
+    // allocated as managed/tracked memory so the kernel can index it
+
+    cudaMallocTracked(&buffers, thread_count * sizeof(ThreadBuffers));
+
+    for (int i = 0; i < thread_count; i++)
+    {
+        cudaMallocTracked(&buffers[i].lzp_statemap, 0x200 * sizeof(U32));
+
+        cudaMallocTracked(&buffers[i].lzp_apm[0], 0x20000 * sizeof(int));
+        cudaMallocTracked(&buffers[i].lzp_apm[1], 0x80000 * sizeof(int));
+        cudaMallocTracked(&buffers[i].lzp_apm[2], 0x200000 * sizeof(int));
+
+        cudaMallocTracked(&buffers[i].lzp_buffer, MEM_host / 8 * sizeof(U8));
+        cudaMallocTracked(&buffers[i].lzp_table, MEM_host / 32 * sizeof(U32));
+
+        for (int j = 0; j < 11; j++)
+            cudaMallocTracked(&buffers[i].predictor_statemap[j], 0x100 * sizeof(U32));
+
+        for (int j = 0; j < 10; j++)
+            cudaMallocTracked(&buffers[i].predictor_mix[j], 0x800 * sizeof(int));
+
+        cudaMallocTracked(&buffers[i].predictor_apm[0], 0x20000 * sizeof(int));
+        cudaMallocTracked(&buffers[i].predictor_apm[1], 0x20000 * sizeof(int));
+        cudaMallocTracked(&buffers[i].predictor_apm[2], 0x20000 * sizeof(int));
+
+        cudaMallocTracked(&buffers[i].predictor_hashtable,
+                          (MEM_host / 2 + 128) * sizeof(U8)); // parens fixed
+        cudaMallocTracked(&buffers[i].predictor_context1, 0x40000 * sizeof(U8));
+        cudaMallocTracked(&encoder_buffer[i], 0x20000 * sizeof(unsigned char)); // encoder buffer
+    }
+}
+void deviceIntialization(int thread_count)
+{
+    int threadsPerBlock = 256;
+    int blocks = (thread_count + threadsPerBlock - 1) / threadsPerBlock;
+    init<<<blocks, threadsPerBlock>>>(thread_count, buffers, memory_level);
+    cudaDeviceSynchronize();
 }
 
 void compress(char *destination_file, char *source_file)
@@ -1304,7 +1362,8 @@ void compress(char *destination_file, char *source_file)
     // std::cout << "Total Device Call " << device_call_count << endl;
 
     // device initialization
-    init<<<1, 1>>>(memory_level);
+    memoryAllocationForThread(maximum_thread_per_device_call);
+
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess)
     {
@@ -1323,6 +1382,63 @@ void compress(char *destination_file, char *source_file)
 
     total_compressed_size = 0;
     total_uncompressed_size = 0;
+    int num_of_thread = std::min(maximum_thread_per_device_call, num_of_chunks);
+
+    // --------------------------------------------------
+    // Device pointer arrays
+    // --------------------------------------------------
+    char **d_input;
+    char **d_output;
+    cudaMallocTracked(&d_input, num_of_thread * sizeof(char *));
+    cudaMallocTracked(&d_output, num_of_thread * sizeof(char *));
+
+    // --------------------------------------------------
+    // Size arrays
+    // --------------------------------------------------
+    size_t *d_input_size;
+    size_t *d_output_size;
+    cudaMallocTracked(&d_input_size,
+                      num_of_thread * sizeof(size_t));
+    cudaMallocTracked(&d_output_size, num_of_thread * sizeof(size_t));
+    // --------------------------------------------------
+
+    // --------------------------------------------------
+    // Temporary host arrays containing device pointers
+    // --------------------------------------------------
+    char **temp_d_input =
+        new char *[num_of_thread];
+
+    char **temp_d_output =
+        new char *[num_of_thread];
+    // --------------------------------------------------
+    // Allocate each chunk on DEVICE
+    // --------------------------------------------------
+    for (int i = 0; i < num_of_thread; i++)
+    {
+        // Input
+        cudaMallocTracked(
+            &temp_d_input[i],
+            chunk_B * sizeof(char));
+
+        // Output
+        //
+        // Currently output size == input size
+        // because your kernel only copies data.
+        cudaMallocTracked(
+            &temp_d_output[i],
+            (chunk_B + 2) * sizeof(char));
+    }
+    // FIX: Allocate memory for the host integer array before copying
+    size_t *output_size = (size_t *)malloc(num_of_thread * sizeof(size_t));
+    // FIX: Allocate memory for the array of host pointers before copying
+    char **output = new char *[num_of_thread];
+
+    for (int i = 0; i < num_of_thread; i++)
+    {
+        // FIX: Allocate memory for each specific chunk array before copying
+        output[i] = new char[chunk_B + 2];
+    }
+
     for (int call_count = 0; call_count < device_call_count; call_count++)
     {
         // std::cout << "\n\nDevice Call No: " << call_count + 1 << endl;
@@ -1345,29 +1461,6 @@ void compress(char *destination_file, char *source_file)
 
         // preparing for calling device function
 
-        // --------------------------------------------------
-        // Device pointer arrays
-        // --------------------------------------------------
-
-        char **d_input;
-        char **d_output;
-
-        begin_device_call_memory();
-        cudaMallocTracked(&d_input, num_of_current_thread * sizeof(char *));
-        cudaMallocTracked(&d_output, num_of_current_thread * sizeof(char *));
-
-        // --------------------------------------------------
-        // Size arrays
-        // --------------------------------------------------
-
-        size_t *d_input_size;
-        size_t *d_output_size;
-
-        cudaMallocTracked(&d_input_size,
-                          num_of_current_thread * sizeof(size_t));
-
-        cudaMallocTracked(&d_output_size, num_of_current_thread * sizeof(size_t));
-        // --------------------------------------------------
         // Copy input sizes: HOST -> DEVICE
         // --------------------------------------------------
 
@@ -1378,37 +1471,11 @@ void compress(char *destination_file, char *source_file)
             cudaMemcpyHostToDevice);
 
         // --------------------------------------------------
-        // Temporary host arrays containing device pointers
-        // --------------------------------------------------
-
-        char **temp_d_input =
-            new char *[num_of_current_thread];
-
-        char **temp_d_output =
-            new char *[num_of_current_thread];
-
-        // --------------------------------------------------
         // Allocate each chunk on DEVICE
         // --------------------------------------------------
 
         for (int i = 0; i < num_of_current_thread; i++)
         {
-            // Input
-            cudaMallocTracked(
-                &temp_d_input[i],
-                input_size[i] * sizeof(char));
-
-            // Output
-            //
-            // Currently output size == input size
-            // because your kernel only copies data.
-            cudaMallocTracked(
-                &temp_d_output[i],
-                (input_size[i] + 2) * sizeof(char));
-
-            // --------------------------------------------------
-            // Copy input chunk: HOST -> DEVICE
-            // --------------------------------------------------
 
             cudaMemcpy(
                 temp_d_input[i],
@@ -1439,15 +1506,14 @@ void compress(char *destination_file, char *source_file)
 
         int threads = MAX_THREADS_PER_BLOCK;
 
-        int blocks =
-            (num_of_current_thread + threads - 1) / threads;
-
         // std::cout << blocks << " " << threads << endl;
 
         ////////////////////paq9_cuda call////////////////////////////
 
         // std::cout << "Assigned block: " << blocks << endl;
         threads = std::min(threads, (int)num_of_current_thread);
+        int blocks =
+            (num_of_current_thread + threads - 1) / threads;
         // std::cout << "Assigned threads: " << threads << endl;
         // std::cout << "Total threads: " << blocks * threads << endl;
 
@@ -1455,7 +1521,7 @@ void compress(char *destination_file, char *source_file)
             d_input_size,
             d_input,
             d_output_size,
-            d_output,
+            d_output, encoder_buffer,
             num_of_current_thread, COMPRESS, memory_level);
 
         cudaDeviceSynchronize();
@@ -1476,14 +1542,10 @@ void compress(char *destination_file, char *source_file)
             exit(1);
         }
 
-        finish_device_call_memory();
-
         // --------------------------------------------------
         // Copy output sizes: DEVICE -> HOST
         // --------------------------------------------------
 
-        // FIX: Allocate memory for the host integer array before copying
-        size_t *output_size = (size_t *)malloc(num_of_current_thread * sizeof(size_t));
         cudaMemcpy(output_size, d_output_size, num_of_current_thread * sizeof(size_t), cudaMemcpyDeviceToHost);
 
         // --------------------------------------------------
@@ -1491,41 +1553,16 @@ void compress(char *destination_file, char *source_file)
         // --------------------------------------------------
 
         // FIX: Allocate memory for the array of host pointers before copying
-        char **output = new char *[num_of_current_thread];
 
         for (int i = 0; i < num_of_current_thread; i++)
         {
-            // FIX: Allocate memory for each specific chunk array before copying
-            output[i] = new char[output_size[i]];
+
             cudaMemcpy(
                 output[i],
                 temp_d_output[i],
                 output_size[i] * sizeof(char),
                 cudaMemcpyDeviceToHost);
         }
-
-        // --------------------------------------------------
-        // Free DEVICE chunk memory
-        // --------------------------------------------------
-
-        for (int i = 0; i < num_of_current_thread; i++)
-        {
-            cudaFree(temp_d_input[i]);
-            cudaFree(temp_d_output[i]);
-        }
-
-        // --------------------------------------------------
-        // Free DEVICE arrays
-        // --------------------------------------------------
-
-        cudaFree(d_input);
-        cudaFree(d_output);
-
-        cudaFree(d_input_size);
-        cudaFree(d_output_size);
-
-        delete[] temp_d_input;
-        delete[] temp_d_output;
 
         // Inside your main writing logic:
 
@@ -1553,6 +1590,28 @@ void compress(char *destination_file, char *source_file)
     }
     source.close();
     dest.close();
+    // --------------------------------------------------
+    // Free DEVICE chunk memory
+    // --------------------------------------------------
+
+    for (int i = 0; i < num_of_thread; i++)
+    {
+        cudaFree(temp_d_input[i]);
+        cudaFree(temp_d_output[i]);
+    }
+
+    // --------------------------------------------------
+    // Free DEVICE arrays
+    // --------------------------------------------------
+
+    cudaFree(d_input);
+    cudaFree(d_output);
+
+    cudaFree(d_input_size);
+    cudaFree(d_output_size);
+
+    delete[] temp_d_input;
+    delete[] temp_d_output;
 
     std::cout << "Total: " << total_uncompressed_size << " Byte -> " << total_compressed_size << " Byte" << endl;
 
@@ -1695,7 +1754,8 @@ void decompress(const char *destination_file, const char *source_file)
         // std::cout << "Total Device Call " << device_call_count << endl;
 
         // device initialization
-        init<<<1, 1>>>(memory_level);
+
+        memoryAllocationForThread(maximum_thread_per_device_call);
         cudaError_t err = cudaGetLastError();
         if (err != cudaSuccess)
         {
@@ -1848,7 +1908,7 @@ void decompress(const char *destination_file, const char *source_file)
                 d_input_size,
                 d_input,
                 d_output_size,
-                d_output,
+                d_output, encoder_buffer,
                 num_of_current_thread, DECOMPRESS, memory_level);
 
             cudaDeviceSynchronize();
