@@ -15,7 +15,7 @@ typedef unsigned short U16;
 typedef unsigned int U32;
 
 // define
-#define MAX_THREADS 1024
+#define MAX_THREADS 2048
 #define MAX_THREADS_PER_BLOCK 256
 #define COMPRESS 0
 #define DECOMPRESS 1
@@ -70,33 +70,6 @@ __device__ int get_tid()
 {
     return blockIdx.x * blockDim.x + threadIdx.x;
 }
-
-class Alloc
-{
-    long long total_allocated_size;
-
-public:
-    __device__ Alloc()
-    {
-        total_allocated_size = 0;
-    }
-    template <class T>
-    __device__ void alloc(T *&p, size_t allocate_size)
-    {
-        p = new T[allocate_size]();
-        if (!p)
-        {
-            printf("Error: Out of memory (failed to allocate %zu elements)\n", allocate_size * sizeof(T));
-            total_allocated_size = -1;
-            return;
-        }
-        total_allocated_size += allocate_size * sizeof(T);
-        atomicAdd(&device_call_heap_allocated,
-                  static_cast<unsigned long long>(allocate_size) * sizeof(T));
-    }
-};
-
-__device__ Alloc *allocator[MAX_THREADS];
 
 ///////////////////////////// Squash //////////////////////////////
 
@@ -182,42 +155,42 @@ __device__ Stretch *stretch;
 
 class Ilog
 {
-    U8 *t;
+    U8 *table;
 
 public:
-    __device__ Ilog();
+    __device__ Ilog(U8 *table);
     __device__ int operator()(U16 x) const;
     __device__ int operator()(U32 x) const;
 };
 
 // intialize the sonstructor and method of Ilog
 
-__device__ Ilog::Ilog()
+__device__ Ilog::Ilog(U8 *table) : table(table)
 {
-    allocator[get_tid()]->alloc(t, 65536);
+    // allocator[get_tid()]->alloc(table, 65536);
     U32 x = 14155776;
     for (int i = 2; i < 65536; ++i)
     {
         x += 774541002 / (i * 2 - 1); // numerator is 2^29/ln 2
-        t[i] = x >> 24;
+        table[i] = x >> 24;
     }
 }
 __device__ int Ilog::operator()(U16 x) const
 {
-    return t[x];
+    return table[x];
 }
-// global instance of Ilog
-
-__device__ Ilog *ilog;
 __device__ int Ilog::operator()(U32 x) const
 {
     if (x >= 0x1000000)
-        return 256 + ilog->operator()(x >> 16);
+        return 256 + table[x >> 16]; //  return 256+ ilog->operator()(x >> 16);
     else if (x >= 0x10000)
-        return 128 + ilog->operator()(x >> 8);
+        return 128 +
+               table[x >> 8]; // return 128+ ilog->operator()(x >> 8);
     else
-        return ilog->operator()(x);
+        return table[x]; // ilog->operator()(x);
 }
+// global instance of Ilog
+__device__ Ilog *ilog;
 
 ///////////////////////// state table ////////////////////////
 
@@ -238,256 +211,7 @@ __device__ int Ilog::operator()(U32 x) const
 // then part of this count is discarded to favor newer data over old.
 
 __device__ static const U8 State_table[256][2] = {
-    {1, 2}, {3, 5}, {4, 6}, {7, 10}, {8, 12}, {9, 13}, {11, 14}, // 0
-    {15, 19},
-    {16, 23},
-    {17, 24},
-    {18, 25},
-    {20, 27},
-    {21, 28},
-    {22, 29}, // 7
-    {26, 30},
-    {31, 33},
-    {32, 35},
-    {32, 35},
-    {32, 35},
-    {32, 35},
-    {34, 37}, // 14
-    {34, 37},
-    {34, 37},
-    {34, 37},
-    {34, 37},
-    {34, 37},
-    {36, 39},
-    {36, 39}, // 21
-    {36, 39},
-    {36, 39},
-    {38, 40},
-    {41, 43},
-    {42, 45},
-    {42, 45},
-    {44, 47}, // 28
-    {44, 47},
-    {46, 49},
-    {46, 49},
-    {48, 51},
-    {48, 51},
-    {50, 52},
-    {53, 43}, // 35
-    {54, 57},
-    {54, 57},
-    {56, 59},
-    {56, 59},
-    {58, 61},
-    {58, 61},
-    {60, 63}, // 42
-    {60, 63},
-    {62, 65},
-    {62, 65},
-    {50, 66},
-    {67, 55},
-    {68, 57},
-    {68, 57}, // 49
-    {70, 73},
-    {70, 73},
-    {72, 75},
-    {72, 75},
-    {74, 77},
-    {74, 77},
-    {76, 79}, // 56
-    {76, 79},
-    {62, 81},
-    {62, 81},
-    {64, 82},
-    {83, 69},
-    {84, 71},
-    {84, 71}, // 63
-    {86, 73},
-    {86, 73},
-    {44, 59},
-    {44, 59},
-    {58, 61},
-    {58, 61},
-    {60, 49}, // 70
-    {60, 49},
-    {76, 89},
-    {76, 89},
-    {78, 91},
-    {78, 91},
-    {80, 92},
-    {93, 69}, // 77
-    {94, 87},
-    {94, 87},
-    {96, 45},
-    {96, 45},
-    {48, 99},
-    {48, 99},
-    {88, 101}, // 84
-    {88, 101},
-    {80, 102},
-    {103, 69},
-    {104, 87},
-    {104, 87},
-    {106, 57},
-    {106, 57}, // 91
-    {62, 109},
-    {62, 109},
-    {88, 111},
-    {88, 111},
-    {80, 112},
-    {113, 85},
-    {114, 87}, // 98
-    {114, 87},
-    {116, 57},
-    {116, 57},
-    {62, 119},
-    {62, 119},
-    {88, 121},
-    {88, 121}, // 105
-    {90, 122},
-    {123, 85},
-    {124, 97},
-    {124, 97},
-    {126, 57},
-    {126, 57},
-    {62, 129}, // 112
-    {62, 129},
-    {98, 131},
-    {98, 131},
-    {90, 132},
-    {133, 85},
-    {134, 97},
-    {134, 97}, // 119
-    {136, 57},
-    {136, 57},
-    {62, 139},
-    {62, 139},
-    {98, 141},
-    {98, 141},
-    {90, 142}, // 126
-    {143, 95},
-    {144, 97},
-    {144, 97},
-    {68, 57},
-    {68, 57},
-    {62, 81},
-    {62, 81}, // 133
-    {98, 147},
-    {98, 147},
-    {100, 148},
-    {149, 95},
-    {150, 107},
-    {150, 107},
-    {108, 151}, // 140
-    {108, 151},
-    {100, 152},
-    {153, 95},
-    {154, 107},
-    {108, 155},
-    {100, 156},
-    {157, 95}, // 147
-    {158, 107},
-    {108, 159},
-    {100, 160},
-    {161, 105},
-    {162, 107},
-    {108, 163},
-    {110, 164}, // 154
-    {165, 105},
-    {166, 117},
-    {118, 167},
-    {110, 168},
-    {169, 105},
-    {170, 117},
-    {118, 171}, // 161
-    {110, 172},
-    {173, 105},
-    {174, 117},
-    {118, 175},
-    {110, 176},
-    {177, 105},
-    {178, 117}, // 168
-    {118, 179},
-    {110, 180},
-    {181, 115},
-    {182, 117},
-    {118, 183},
-    {120, 184},
-    {185, 115}, // 175
-    {186, 127},
-    {128, 187},
-    {120, 188},
-    {189, 115},
-    {190, 127},
-    {128, 191},
-    {120, 192}, // 182
-    {193, 115},
-    {194, 127},
-    {128, 195},
-    {120, 196},
-    {197, 115},
-    {198, 127},
-    {128, 199}, // 189
-    {120, 200},
-    {201, 115},
-    {202, 127},
-    {128, 203},
-    {120, 204},
-    {205, 115},
-    {206, 127}, // 196
-    {128, 207},
-    {120, 208},
-    {209, 125},
-    {210, 127},
-    {128, 211},
-    {130, 212},
-    {213, 125}, // 203
-    {214, 137},
-    {138, 215},
-    {130, 216},
-    {217, 125},
-    {218, 137},
-    {138, 219},
-    {130, 220}, // 210
-    {221, 125},
-    {222, 137},
-    {138, 223},
-    {130, 224},
-    {225, 125},
-    {226, 137},
-    {138, 227}, // 217
-    {130, 228},
-    {229, 125},
-    {230, 137},
-    {138, 231},
-    {130, 232},
-    {233, 125},
-    {234, 137}, // 224
-    {138, 235},
-    {130, 236},
-    {237, 125},
-    {238, 137},
-    {138, 239},
-    {130, 240},
-    {241, 125}, // 231
-    {242, 137},
-    {138, 243},
-    {130, 244},
-    {245, 135},
-    {246, 137},
-    {138, 247},
-    {140, 248}, // 238
-    {249, 135},
-    {250, 69},
-    {80, 251},
-    {140, 252},
-    {249, 135},
-    {250, 69},
-    {80, 251}, // 245
-    {140, 252},
-    {0, 0},
-    {0, 0},
-    {0, 0}}; // 252
+    {1, 2}, {3, 5}, {4, 6}, {7, 10}, {8, 12}, {9, 13}, {11, 14}, {15, 19}, {16, 23}, {17, 24}, {18, 25}, {20, 27}, {21, 28}, {22, 29}, {26, 30}, {31, 33}, {32, 35}, {32, 35}, {32, 35}, {32, 35}, {34, 37}, {34, 37}, {34, 37}, {34, 37}, {34, 37}, {34, 37}, {36, 39}, {36, 39}, {36, 39}, {36, 39}, {38, 40}, {41, 43}, {42, 45}, {42, 45}, {44, 47}, {44, 47}, {46, 49}, {46, 49}, {48, 51}, {48, 51}, {50, 52}, {53, 43}, {54, 57}, {54, 57}, {56, 59}, {56, 59}, {58, 61}, {58, 61}, {60, 63}, {60, 63}, {62, 65}, {62, 65}, {50, 66}, {67, 55}, {68, 57}, {68, 57}, {70, 73}, {70, 73}, {72, 75}, {72, 75}, {74, 77}, {74, 77}, {76, 79}, {76, 79}, {62, 81}, {62, 81}, {64, 82}, {83, 69}, {84, 71}, {84, 71}, {86, 73}, {86, 73}, {44, 59}, {44, 59}, {58, 61}, {58, 61}, {60, 49}, {60, 49}, {76, 89}, {76, 89}, {78, 91}, {78, 91}, {80, 92}, {93, 69}, {94, 87}, {94, 87}, {96, 45}, {96, 45}, {48, 99}, {48, 99}, {88, 101}, {88, 101}, {80, 102}, {103, 69}, {104, 87}, {104, 87}, {106, 57}, {106, 57}, {62, 109}, {62, 109}, {88, 111}, {88, 111}, {80, 112}, {113, 85}, {114, 87}, {114, 87}, {116, 57}, {116, 57}, {62, 119}, {62, 119}, {88, 121}, {88, 121}, {90, 122}, {123, 85}, {124, 97}, {124, 97}, {126, 57}, {126, 57}, {62, 129}, {62, 129}, {98, 131}, {98, 131}, {90, 132}, {133, 85}, {134, 97}, {134, 97}, {136, 57}, {136, 57}, {62, 139}, {62, 139}, {98, 141}, {98, 141}, {90, 142}, {143, 95}, {144, 97}, {144, 97}, {68, 57}, {68, 57}, {62, 81}, {62, 81}, {98, 147}, {98, 147}, {100, 148}, {149, 95}, {150, 107}, {150, 107}, {108, 151}, {108, 151}, {100, 152}, {153, 95}, {154, 107}, {108, 155}, {100, 156}, {157, 95}, {158, 107}, {108, 159}, {100, 160}, {161, 105}, {162, 107}, {108, 163}, {110, 164}, {165, 105}, {166, 117}, {118, 167}, {110, 168}, {169, 105}, {170, 117}, {118, 171}, {110, 172}, {173, 105}, {174, 117}, {118, 175}, {110, 176}, {177, 105}, {178, 117}, {118, 179}, {110, 180}, {181, 115}, {182, 117}, {118, 183}, {120, 184}, {185, 115}, {186, 127}, {128, 187}, {120, 188}, {189, 115}, {190, 127}, {128, 191}, {120, 192}, {193, 115}, {194, 127}, {128, 195}, {120, 196}, {197, 115}, {198, 127}, {128, 199}, {120, 200}, {201, 115}, {202, 127}, {128, 203}, {120, 204}, {205, 115}, {206, 127}, {128, 207}, {120, 208}, {209, 125}, {210, 127}, {128, 211}, {130, 212}, {213, 125}, {214, 137}, {138, 215}, {130, 216}, {217, 125}, {218, 137}, {138, 219}, {130, 220}, {221, 125}, {222, 137}, {138, 223}, {130, 224}, {225, 125}, {226, 137}, {138, 227}, {130, 228}, {229, 125}, {230, 137}, {138, 231}, {130, 232}, {233, 125}, {234, 137}, {138, 235}, {130, 236}, {237, 125}, {238, 137}, {138, 239}, {130, 240}, {241, 125}, {242, 137}, {138, 243}, {130, 244}, {245, 135}, {246, 137}, {138, 247}, {140, 248}, {249, 135}, {250, 69}, {80, 251}, {140, 252}, {249, 135}, {250, 69}, {80, 251}, {140, 252}, {0, 0}, {0, 0}, {0, 0}};
 
 #define nex(state, sel) State_table[state][sel]
 
@@ -512,7 +236,7 @@ protected:
     U32 *prediction_table; // cntxt -> prediction in high 22 bits, count in low 10 bits
 
 public:
-    __device__ StateMap(int n = 256);
+    __device__ StateMap(U32 *prediction_table_ptr, int n = 256);
     __device__ ~StateMap(); // frees prediction_table
 
     // update bit y (0..1)
@@ -525,10 +249,10 @@ public:
 
 // Initialization
 
-__device__ StateMap::StateMap(int n) : N(n), cntxt(0)
+__device__ StateMap::StateMap(U32 *prediction_table_ptr, int n) : prediction_table(prediction_table_ptr), N(n), cntxt(0)
 {
 
-    allocator[get_tid()]->alloc(prediction_table, N);
+    // allocator[get_tid()]->alloc(prediction_table, N);
     for (int i = 0; i < N; i++)
         prediction_table[i] = 2147483648U; // 1<<31
     if (state_map_dt[0] == 0)
@@ -538,7 +262,7 @@ __device__ StateMap::StateMap(int n) : N(n), cntxt(0)
 
 __device__ StateMap::~StateMap()
 {
-    delete[] prediction_table;
+    // delete[] prediction_table;
     prediction_table = 0;
 }
 
@@ -583,23 +307,23 @@ protected:
     int last_prediction; // last output
 
 public:
-    __device__ Mix(int n = 512);
+    __device__ Mix(int *weight_ptr, int n = 512);
     __device__ ~Mix(); // frees wt (APM inherits this destructor)
     __device__ int prediction(int p1, int p2, int cntxt);
     __device__ void update(int y);
 };
 // initialization
 
-__device__ Mix::Mix(int n) : N(n), x1(0), x2(0), context(0), last_prediction(0)
+__device__ Mix::Mix(int *weight_ptr, int n) : wt(weight_ptr), N(n), x1(0), x2(0), context(0), last_prediction(0)
 {
-    allocator[get_tid()]->alloc(wt, n * 2);
+    // allocator[get_tid()]->alloc(wt, n * 2);
     for (int i = 0; i < N * 2; i++)
         wt[i] = 1 << 23;
 }
 
 __device__ Mix::~Mix()
 {
-    delete[] wt;
+    // delete[] wt;
     wt = 0;
 }
 
@@ -630,10 +354,10 @@ __device__ void Mix::update(int y)
 class APM : public Mix
 {
 public:
-    __device__ APM(int n);
+    __device__ APM(int *weight_ptr, int n);
 };
 
-__device__ APM::APM(int n) : Mix(n)
+__device__ APM::APM(int *weight_ptr, int n) : Mix(weight_ptr, n)
 {
     for (int i = 0; i < n; i++)
     {
@@ -753,20 +477,20 @@ private:
     {
         MINLEN = 12
     }; // minimum match length
-    U8 *buf;               // Rotating buffer of size N
-    U32 *table;            // Hash Table of pointers in high 24 bits, state in low 8 bits
-    int match;             // start of match
-    size_t len;            // length of match
-    size_t pos;            // position of next char to write to buffer
-    U32 hash;              // context hash
-    U32 hash1;             // hash of last 8 bytes updates, shifting 4 bits to MSB
-    U32 hash2;             // last 4 updates, shifting 8 bits to MSB
-    StateMap statemap1;    // len+offset->p
-    APM apm1, apm2, apm3;  // p, context->p
-    int literals, matches; // statistics
+    U8 *buffer;              // Rotating buffer of size N
+    U32 *table;              // Hash Table of pointers in high 24 bits, state in low 8 bits
+    int match;               // start of match
+    size_t len;              // length of match
+    size_t pos;              // position of next char to write to buffer
+    U32 hash;                // context hash
+    U32 hash1;               // hash of last 8 bytes updates, shifting 4 bits to MSB
+    U32 hash2;               // last 4 updates, shifting 8 bits to MSB
+    StateMap *statemap;      // len+offset->p
+    APM *apm1, *apm2, *apm3; // p, context->p
+    int literals, matches;   // statistics
 public:
     U32 word0, word1; // Hashes of last 2 words (case insensitive a-z)
-    __device__ LZP();
+    __device__ LZP(StateMap *statemap1, U8 *buffer, U32 *table, APM *apm1, APM *apm2, APM *apm3);
     __device__ ~LZP();
     __device__ int predict_char(); // predicted char
     __device__ int context(int i); // context
@@ -783,15 +507,17 @@ public:
 };
 // Initilization
 
-__device__ LZP::LZP() : N(MEM / 8), H(MEM / 32),
-                        match(-1), len(0), pos(0), hash(0), hash1(0), hash2(0),
-                        statemap1(0x200), apm1(0x10000), apm2(0x40000), apm3(0x100000),
-                        literals(0), matches(0), word0(0), word1(0)
+__device__ LZP::LZP(StateMap *statemap, U8 *buf, U32 *tab, APM *apm1, APM *apm2, APM *apm3) : N(MEM / 8), H(MEM / 32),
+                                                                                              match(-1), len(0), pos(0), hash(0), hash1(0), hash2(0),
+                                                                                              statemap(statemap), apm1(apm1), apm2(apm2), apm3(apm3),
+                                                                                              literals(0), matches(0), word0(0), word1(0)
 {
     assert(MEM > 0);
     assert(H > 0);
-    allocator[get_tid()]->alloc(table, H);
-    allocator[get_tid()]->alloc(buf, N);
+    buffer = buf;
+    table = tab;
+    // allocator[get_tid()]->alloc(table, H);
+    // allocator[get_tid()]->alloc(buffer, N);
 }
 
 // Print statistics
@@ -808,9 +534,9 @@ __device__ LZP::~LZP()
     //        literals, matches,
     //        literals + matches > 0 ? 100.0 * matches / (literals + matches) : 0.0);
     delete[] table;
-    delete[] buf;
+    delete[] buffer;
     table = 0;
-    buf = 0;
+    buffer = 0;
     // statemap1 and apm1/apm2/apm3 are member objects, not pointers:
     // their own destructors run automatically and free their internals.
 }
@@ -818,14 +544,14 @@ __device__ LZP::~LZP()
 // Predicted next byte, or -1 for no prediction
 __device__ int LZP::predict_char()
 {
-    return len >= MINLEN ? buf[match & N - 1] : -1;
+    return len >= MINLEN ? buffer[match & N - 1] : -1;
 }
 
 // Return i'th byte of context (i > 0)
 __device__ int LZP::context(int i)
 {
     assert(i > 0);
-    return buf[pos - i & N - 1];
+    return buffer[pos - i & N - 1];
 }
 
 // Return prediction that c() will be the next byte (0..4095)
@@ -837,11 +563,11 @@ __device__ int LZP::probability()
     if (len > 28)
         cxt = 28 + (len >= 32) + (len >= 64) + (len >= 128);
     int pc = predict_char();
-    int pr = statemap1.predict_next_bit(cxt);
+    int pr = statemap->predict_next_bit(cxt);
     pr = stretch->operator()(pr);
-    pr = apm1.prediction(2048, pr * 2, hash2 * 256 + pc & 0xffff) * 3 + pr >> 2;
-    pr = apm2.prediction(2048, pr * 2, hash1 * (11 << 6) + pc & 0x3ffff) * 3 + pr >> 2;
-    pr = apm3.prediction(2048, pr * 2, hash1 * (7 << 4) + pc & 0xfffff) * 3 + pr >> 2;
+    pr = apm1->prediction(2048, pr * 2, hash2 * 256 + pc & 0xffff) * 3 + pr >> 2;
+    pr = apm2->prediction(2048, pr * 2, hash1 * (11 << 6) + pc & 0x3ffff) * 3 + pr >> 2;
+    pr = apm3->prediction(2048, pr * 2, hash1 * (7 << 4) + pc & 0xfffff) * 3 + pr >> 2;
     pr = squash->operator()(pr);
     return pr;
 }
@@ -855,16 +581,16 @@ __device__ void LZP::update(int ch)
     hash = hash * (5 << 2) + ch + 1 & H - 1;
     if (len >= MINLEN)
     {
-        statemap1.update(y);
-        apm1.update(y);
-        apm2.update(y);
-        apm3.update(y);
+        statemap->update(y);
+        apm1->update(y);
+        apm2->update(y);
+        apm3->update(y);
     }
     if (isalpha_device(ch))
         word0 = word0 * (29 << 2) + tolower_device(ch);
     else if (word0)
         word1 = word0, word0 = 0;
-    buf[pos & N - 1] = ch; // update buf
+    buffer[pos & N - 1] = ch; // update buffer
     ++pos;
     if (y)
     { // extend match
@@ -880,7 +606,7 @@ __device__ void LZP::update(int ch)
         match = table[hash];
         if (!((match ^ pos) & N - 1))
             --match;
-        while (len <= 128 && buf[match - len & N - 1] == buf[pos - len & N - 1])
+        while (len <= 128 && buffer[match - len & N - 1] == buffer[pos - len & N - 1])
             ++len;
         --len;
     }
@@ -907,25 +633,25 @@ class Predictor
     int nibble;              // last 0-3 bits with leading 1 (1..15)
     int bcount;              // number of bits in c0 (0..7)
     HashTable<16> hashtable; // context -> state
-    StateMap statemap[N];    // state -> prediction
+    StateMap *statemap;      // state -> prediction, N size
     U8 *cp[N];               // i -> state array of bit histories for i'th context
     U8 *sp[N];               // i -> pointer to bit history for i'th context
-    Mix mix[N - 1];          // combines 2 predictions given a context
-    APM apm1, apm2, apm3;    // adjusts a prediction given a context
+    Mix *mix;                //[N - 1];          // combines 2 predictions given a context
+    APM *apm1, *apm2, *apm3; // adjusts a prediction given a context
     U8 *context1;            // order 1 contexts -> state
 
 public:
-    __device__ Predictor();
+    __device__ Predictor(U8 *context1_ptr, StateMap *statemap1, APM *apm1, APM *apm2, APM *apm3);
     __device__ ~Predictor(); // frees context1; member destructors free hashtable/statemap/mix/apm
     __device__ int predict_next_bit();
     __device__ void update(int y);
 };
 
 // Initialize
-__device__ Predictor::Predictor() : c0(0), nibble(1), bcount(0), hashtable(MEM / 2),
-                                    apm1(0x10000), apm2(0x10000), apm3(0x10000)
+__device__ Predictor::Predictor(U8 *context1_ptr, StateMap *statemap1, APM *apm1, APM *apm2, APM *apm3) : c0(0), context1(context1_ptr), nibble(1), bcount(0), hashtable(MEM / 2),
+                                                                                                          apm1(apm1), apm2(apm2), apm3(apm3)
 {
-    allocator[get_tid()]->alloc(context1, 0x40000);
+    // allocator[get_tid()]->alloc(context1, 0x40000);
     for (int i = 0; i < N; ++i)
         sp[i] = cp[i] = context1;
 }
@@ -964,9 +690,9 @@ __device__ void Predictor::update(int y)
             bcount = c0 = 0;
         if ((nibble += nibble + y) >= 16)
             nibble = 1;
-        apm1.update(y);
-        apm2.update(y);
-        apm3.update(y);
+        apm1->update(y);
+        apm2->update(y);
+        apm3->update(y);
     }
 }
 
@@ -1015,9 +741,9 @@ __device__ int Predictor::predict_next_bit()
             int st = *sp[i];
             pr = mix[i - 1].prediction(pr, stretch->operator()(statemap[i].predict_next_bit(st)), st + r) * 3 + pr >> 2;
         }
-        pr = apm1.prediction(512, pr * 2, c0 + pc * 256 & 0xffff) * 3 + pr >> 2; // Adjust prediction
-        pr = apm2.prediction(512, pr * 2, c4 << 8 & 0xff00 | c0) * 3 + pr >> 2;
-        pr = apm3.prediction(512, pr * 2, c4 * 3 + c0 & 0xffff) * 3 + pr >> 2;
+        pr = apm1->prediction(512, pr * 2, c0 + pc * 256 & 0xffff) * 3 + pr >> 2; // Adjust prediction
+        pr = apm2->prediction(512, pr * 2, c4 << 8 & 0xff00 | c0) * 3 + pr >> 2;
+        pr = apm3->prediction(512, pr * 2, c4 * 3 + c0 & 0xffff) * 3 + pr >> 2;
         return squash->operator()(pr);
     }
 }
@@ -1050,13 +776,13 @@ private:
     {
         BUFSIZE = 0x20000
     };
-    unsigned char *buf;  // Compression output buffer, size BUFSIZE
-    size_t usize, csize; // Buffered uncompressed and compressed sizes
-    double usum, csum;   // Total of usize, csize
+    unsigned char *buffer; // Compression output buffer, size BUFSIZE
+    size_t usize, csize;   // Buffered uncompressed and compressed sizes
+    double usum, csum;     // Total of usize, csize
 
 public:
     size_t iterator_size;
-    __device__ Encoder(int m, char *temp, size_t tsz, size_t itr);
+    __device__ Encoder(int m, char *temp,unsigned char *buffer_ptr, size_t tsz, size_t itr);
     __device__ ~Encoder();   // frees buf (COMPRESS mode only; inout is not owned by Encoder)
     __device__ bool flush(); // call this when compression is finished
     __device__ bool put4(U32 c);
@@ -1078,7 +804,7 @@ public:
         while (((x1 ^ x2) & 0xff000000) == 0)
         { // pass equal leading bytes of range
             if (mode == COMPRESS)
-                buf[csize++] = x2 >> 24;
+                buffer[csize++] = x2 >> 24;
             x1 <<= 8;
             x2 = (x2 << 8) + 255;
             if (mode == DECOMPRESS)
@@ -1100,27 +826,26 @@ public:
 };
 
 // Create in mode m (COMPRESS or DECOMPRESS) with f opened as the archive.
-__device__ Encoder::Encoder(int m, char *temp, size_t tsz, size_t itr) : mode(m), inout(temp), total_size(tsz), iterator_size(itr), x1(0), x2(0xffffffff), x(0),
+__device__ Encoder::Encoder(int m, char *temp, unsigned char *buffer_ptr, size_t tsz, size_t itr) : mode(m), inout(temp),buffer(buffer_ptr), total_size(tsz), iterator_size(itr), x1(0), x2(0xffffffff), x(0),
                                                                          usize(0), csize(0), usum(0), csum(0)
 {
     int tid = get_tid();
-    buf = 0;
     if (mode == DECOMPRESS)
     { // x = first 4 bytes of archive
         for (int i = 0; i < 4; ++i)
             x = (x << 8) + (inout[iterator_size++] & 255);
         csize = 4;
     }
-    else if (!buf)
-        allocator[tid]->alloc(buf, BUFSIZE);
+    // else if (!buf)
+    //     allocator[tid]->alloc(buf, BUFSIZE);
 }
 
 __device__ Encoder::~Encoder()
 {
-    if (mode == COMPRESS && buf)
+    if (mode == COMPRESS && buffer)
     {
-        delete[] buf;
-        buf = 0;
+        delete[] buffer;
+        buffer = 0;
     }
     // inout is owned by the caller (points into the chunk's device buffer) - never freed here.
 }
@@ -1151,10 +876,10 @@ __device__ bool Encoder::flush()
 {
     if (mode == COMPRESS)
     {
-        buf[csize++] = x1 >> 24;
-        buf[csize++] = 255;
-        buf[csize++] = 255;
-        buf[csize++] = 255;
+        buffer[csize++] = x1 >> 24;
+        buffer[csize++] = 255;
+        buffer[csize++] = 255;
+        buffer[csize++] = 255;
         // inout[iterator_size++] = 0;   // putc(0, archive);
         // inout[iterator_size++] = 'c'; // putc('c', archive);
         if (!put4(usize))
@@ -1165,7 +890,7 @@ __device__ bool Encoder::flush()
         {
             if (iterator_size > total_size)
                 return false;
-            inout[iterator_size++] = buf[i];
+            inout[iterator_size++] = buffer[i];
         }
         usum += usize;
         csum += csize + 10;
@@ -1189,19 +914,7 @@ __device__ size_t get4(size_t &itr, const char *in)
     return r;
 }
 
-__global__ void init(int memory_level)
-{
-    // blockDim.x == 0 বাদ দেওয়া হয়েছে
-    if (blockIdx.x == 0 && threadIdx.x == 0)
-    {
-        squash = new Squash();
-        stretch = new Stretch();
-        allocator[get_tid()] = new Alloc();
-        ilog = new Ilog();
-        MEM = 1 << (22 + memory_level);
-        delete allocator[get_tid()];
-    }
-}
+
 
 __global__ void
 paq9_cuda(
@@ -1209,6 +922,7 @@ paq9_cuda(
     char **input,
     size_t *output_size,
     char **output,
+    unsigned char **buffer,
     int num_of_chunks, int mode, int memory_level)
 {
     int tid = get_tid();
@@ -1217,7 +931,6 @@ paq9_cuda(
         return;
     output_size[tid] = 100;
 
-    allocator[tid] = new Alloc();
     predictor[tid] = new Predictor();
     lzp[tid] = new LZP();
 
@@ -1228,7 +941,7 @@ paq9_cuda(
     {
 
         int itr = 0;
-        Encoder encoder(mode, output[tid], input_size[tid], itr);
+        Encoder encoder(mode, output[tid], (buffer[tid]), input_size[tid], itr);
         int ch;
         output[tid][encoder.iterator_size++] = '0';
         itr = 0;
@@ -1292,7 +1005,7 @@ paq9_cuda(
             {
                 usize = get4(itr, input[tid]);
                 get4(itr, input[tid]); // csize
-                Encoder encoder(mode, input[tid], input_size[tid], itr);
+                Encoder encoder(mode, input[tid], buffer[tid], input_size[tid], itr);
 
                 while (usize--)
                 {
@@ -1323,10 +1036,9 @@ paq9_cuda(
     // via the destructors added above.
     delete predictor[tid];
     delete lzp[tid];
-    delete allocator[tid];
     predictor[tid] = 0;
     lzp[tid] = 0;
-    allocator[tid] = 0;
+
 }
 void put4(U32 c, int &iterator_size, char *inout)
 {
@@ -1482,6 +1194,25 @@ size_t getMaximumFreeMemory()
     return free_byte;
 }
 
+__global__ void init(int memory_level)
+{
+    // blockDim.x == 0 বাদ দেওয়া হয়েছে
+    if (blockIdx.x == 0 && threadIdx.x == 0)
+    {
+        squash = new Squash();
+        stretch = new Stretch();
+        ilog = new Ilog();
+        MEM = 1 << (22 + memory_level);
+        delete allocator[get_tid()];
+    }
+}
+
+void memoryAllocationForThread(int thread_count)
+{
+    U8* log_table;
+    cudaMallocTracked(&log_table, 65536 * sizeof(U8));
+}
+
 void compress(char *destination_file, char *source_file)
 {
     // std::cout << "Compression cooking........." << endl;
@@ -1589,6 +1320,7 @@ void compress(char *destination_file, char *source_file)
                   << cudaGetErrorString(err) << '\n';
         exit(1);
     }
+
     total_compressed_size = 0;
     total_uncompressed_size = 0;
     for (int call_count = 0; call_count < device_call_count; call_count++)
