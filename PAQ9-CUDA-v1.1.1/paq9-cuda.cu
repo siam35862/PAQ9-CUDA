@@ -1390,6 +1390,7 @@ void compress(char *destination_file, char *source_file)
     memory_chunk_level = (1 << (level - 1));
     memory_level = getMemoryLevelFromBytes(memory_chunk_level * MB);
     size_t memory_per_thread = 3.5 * getBytesFromMemoryLevel(memory_level);
+    
 
     int maximum_thread_per_device_call = (maximum_memory + memory_per_thread - 1) / memory_per_thread;
 
@@ -1466,8 +1467,10 @@ void compress(char *destination_file, char *source_file)
     // --------------------------------------------------
     char **d_input;
     char **d_output;
+    unsigned char **d_encoder_buffer;
     cudaMallocTracked(&d_input, num_of_thread * sizeof(char *));
     cudaMallocTracked(&d_output, num_of_thread * sizeof(char *));
+    cudaMallocTracked(&d_encoder_buffer, num_of_thread * sizeof(unsigned char *));
 
     // --------------------------------------------------
     // Size arrays
@@ -1518,6 +1521,9 @@ void compress(char *destination_file, char *source_file)
     char **src_file = new char *[num_of_thread];
     for (int i = 0; i < num_of_thread; i++)
         src_file[i] = nullptr;
+
+        auto start_time = std::chrono::high_resolution_clock::now();
+    
     for (int call_count = 0; call_count < device_call_count; call_count++)
     {
         // std::cout << "\n\nDevice Call No: " << call_count + 1 << endl;
@@ -1579,6 +1585,12 @@ void compress(char *destination_file, char *source_file)
             num_of_current_thread * sizeof(char *),
             cudaMemcpyHostToDevice);
 
+        cudaMemcpy(
+            d_encoder_buffer,
+            encoder_buffer,
+            num_of_current_thread * sizeof(unsigned char *),
+            cudaMemcpyHostToDevice);
+
         // --------------------------------------------------
         // Launch kernel
         // --------------------------------------------------
@@ -1595,8 +1607,13 @@ void compress(char *destination_file, char *source_file)
         // std::cout << "Total threads: " << blocks * threads << endl;
 
         // Device Initialization
+
+        auto init_start_time = std::chrono::high_resolution_clock::now();
         deviceIntialization(num_of_current_thread);
         cudaDeviceSynchronize();
+        auto init_end_time = std::chrono::high_resolution_clock::now();
+        auto init_duration = std::chrono::duration_cast<std::chrono::milliseconds>(init_end_time - init_start_time);
+        std::cout << "Device initialization time: " << init_duration.count() << " ms" << endl;
         cudaError_t err1;
         err1 = cudaGetLastError();
         if (err1 != cudaSuccess)
@@ -1615,15 +1632,20 @@ void compress(char *destination_file, char *source_file)
         }
 
         ////////////////////paq9_cuda call////////////////////////////
-
+        auto kernel_start_time = std::chrono::high_resolution_clock::now();
+         std::cout<<"input size: "<<input_size[0]<<" Byte, Current threads: "<<num_of_current_thread<<endl;
         paq9_cuda<<<blocks, threads>>>(
             d_input_size,
             d_input,
             d_output_size,
-            d_output, encoder_buffer,
+            d_output, d_encoder_buffer,
             num_of_current_thread, COMPRESS, memory_level);
 
         cudaDeviceSynchronize();
+        auto kernel_end_time = std::chrono::high_resolution_clock::now();
+        auto kernel_duration = std::chrono::duration_cast<std::chrono::milliseconds>(kernel_end_time - kernel_start_time);
+       
+        std::cout << "Kernel execution time: " << kernel_duration.count() << " ms" << endl;
         err1 = cudaGetLastError();
         if (err1 != cudaSuccess)
         {
@@ -1686,6 +1708,9 @@ void compress(char *destination_file, char *source_file)
         total_compressed_size += total_output;
         total_uncompressed_size += total_input;
     }
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "Total execution time: " << duration.count() << " ms" << endl;
     for (int i = 0; i < num_of_thread; i++)
     {
         if (src_file[i] != nullptr)
@@ -1713,6 +1738,7 @@ void compress(char *destination_file, char *source_file)
 
     cudaFree(d_input);
     cudaFree(d_output);
+    cudaFree(d_encoder_buffer);
 
     cudaFree(d_input_size);
     cudaFree(d_output_size);
