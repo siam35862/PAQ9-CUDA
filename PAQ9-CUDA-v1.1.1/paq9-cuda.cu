@@ -29,7 +29,7 @@ size_t total_compressed_size = 0;
 size_t maximum_heap_limit = 8;     // default heap limit
 size_t maximum_free_memory = 1024; // default consider 1GB memory has free
 
-unsigned long long current_cuda_malloc_allocated = 0;
+unsigned long long total_cuda_malloc_allocated = 0;
 
 unsigned char *encoder_buffer[MAX_THREADS];
 
@@ -38,7 +38,7 @@ cudaError_t cudaMallocTracked(T **pointer, size_t size)
 {
     cudaError_t result = cudaMalloc(pointer, size);
     if (result == cudaSuccess)
-        current_cuda_malloc_allocated += size;
+        total_cuda_malloc_allocated += size;
     return result;
 }
 
@@ -238,7 +238,7 @@ __device__ StateMap::StateMap(U32 *prediction_table_ptr, int n) : prediction_tab
 
 __device__ StateMap::~StateMap()
 {
-    // delete[] prediction_table;
+    delete[] prediction_table;
     prediction_table = 0;
 }
 
@@ -299,7 +299,7 @@ __device__ Mix::Mix(int *weight_ptr, int n) : wt(weight_ptr), N(n), x1(0), x2(0)
 
 __device__ Mix::~Mix()
 {
-    // delete[] wt;
+    delete[] wt;
     wt = 0;
 }
 
@@ -417,6 +417,7 @@ __device__ HashTable<B>::~HashTable()
     // printf("Thread No: %d :-HashTable<%d> %1.4f%% full, %1.4f%% utilized of %d KiB\n", get_tid(),
     //        B, 100.0 * c0 * B / N, 100.0 * c / N, N >> 10);
     delete[] raw_table; // must delete the original pointer, not the aligned one
+    delete[] table;
     raw_table = table = 0;
 }
 
@@ -1221,10 +1222,11 @@ __global__ void init(int thread_count, ThreadBuffers *buffers, int memory_level)
     }
 }
 ThreadBuffers *buffers;
+
+U8 *log_table;
 void memoryAllocationForThread(int thread_count)
 {
 
-    U8 *log_table;
     cudaMallocTracked(&log_table, 65536 * sizeof(U8));
     init<<<1, 1>>>(memory_level, log_table);
     cudaDeviceSynchronize();
@@ -1269,6 +1271,83 @@ void deviceIntialization(int thread_count)
     int blocks = (thread_count + threadsPerBlock - 1) / threadsPerBlock;
     init<<<blocks, threadsPerBlock>>>(thread_count, buffers, memory_level);
     cudaDeviceSynchronize();
+}
+
+// ---------------------------------------------------------
+// Device-side: must run on the GPU because these pointers
+// were allocated with device-side `new` inside the kernels.
+// You cannot cudaFree() or host-delete them - only a kernel
+// running the matching `delete` can release them correctly.
+// ---------------------------------------------------------
+__global__ void freeDeviceObjects(int thread_count)
+{
+    int tid = get_tid();
+
+    if (tid < thread_count)
+    {
+        // NOTE: assumes LZP's and Predictor's destructors cascade-delete
+        // their internal StateMap/APM/Mix/HashTable sub-objects that
+        // were new'd inside the second init() kernel. If they don't,
+        // delete those sub-objects explicitly here before this line.
+        delete lzp[tid];
+        delete predictor[tid];
+    }
+
+    if (tid == 0)
+    {
+        delete squash;
+        delete stretch;
+        delete ilog;
+    }
+}
+
+// ---------------------------------------------------------
+// Host-side: frees every buffer allocated with cudaMallocTracked
+// in memoryAllocationForThread(), using plain cudaFree.
+// Mirrors that function's allocation order exactly.
+// ---------------------------------------------------------
+void memoryDeallocationForThread(int thread_count)
+{
+    // 1. Release device-new'd objects first, while their backing
+    //    buffers (buffers[i].*) are still valid memory.
+    int threadsPerBlock = 256;
+    int blocks = (thread_count + threadsPerBlock - 1) / threadsPerBlock;
+    freeDeviceObjects<<<blocks, threadsPerBlock>>>(thread_count);
+    cudaDeviceSynchronize();
+
+    // 2. Free the raw backing buffers for each thread.
+    for (int i = 0; i < thread_count; i++)
+    {
+        cudaFree(buffers[i].lzp_statemap);
+
+        cudaFree(buffers[i].lzp_apm[0]);
+        cudaFree(buffers[i].lzp_apm[1]);
+        cudaFree(buffers[i].lzp_apm[2]);
+
+        cudaFree(buffers[i].lzp_buffer);
+        cudaFree(buffers[i].lzp_table);
+
+        for (int j = 0; j < 11; j++)
+            cudaFree(buffers[i].predictor_statemap[j]);
+
+        for (int j = 0; j < 10; j++)
+            cudaFree(buffers[i].predictor_mix[j]);
+
+        cudaFree(buffers[i].predictor_apm[0]);
+        cudaFree(buffers[i].predictor_apm[1]);
+        cudaFree(buffers[i].predictor_apm[2]);
+
+        cudaFree(buffers[i].predictor_hashtable);
+        cudaFree(buffers[i].predictor_context1);
+
+        cudaFree(encoder_buffer[i]);
+    }
+
+    // 3. Free the array of structs itself, and the shared log_table.
+    cudaFree(buffers);
+    cudaFree(log_table);
+
+    buffers = nullptr; // avoid dangling global pointer / accidental reuse
 }
 
 void compress(char *destination_file, char *source_file)
@@ -1361,8 +1440,10 @@ void compress(char *destination_file, char *source_file)
     //           << maximum_thread_per_device_call * chunk_B / MB << " MB" << endl;
     // std::cout << "Total Device Call " << device_call_count << endl;
 
+    int num_of_thread = std::min(maximum_thread_per_device_call, num_of_chunks);
     // device initialization
-    memoryAllocationForThread(maximum_thread_per_device_call);
+
+    memoryAllocationForThread(num_of_thread);
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess)
@@ -1382,7 +1463,6 @@ void compress(char *destination_file, char *source_file)
 
     total_compressed_size = 0;
     total_uncompressed_size = 0;
-    int num_of_thread = std::min(maximum_thread_per_device_call, num_of_chunks);
 
     // --------------------------------------------------
     // Device pointer arrays
@@ -1508,14 +1588,17 @@ void compress(char *destination_file, char *source_file)
 
         // std::cout << blocks << " " << threads << endl;
 
-        ////////////////////paq9_cuda call////////////////////////////
-
         // std::cout << "Assigned block: " << blocks << endl;
         threads = std::min(threads, (int)num_of_current_thread);
         int blocks =
             (num_of_current_thread + threads - 1) / threads;
         // std::cout << "Assigned threads: " << threads << endl;
         // std::cout << "Total threads: " << blocks * threads << endl;
+
+        // Device Initialization
+        deviceIntialization(num_of_current_thread);
+
+        ////////////////////paq9_cuda call////////////////////////////
 
         paq9_cuda<<<blocks, threads>>>(
             d_input_size,
@@ -1612,6 +1695,7 @@ void compress(char *destination_file, char *source_file)
 
     delete[] temp_d_input;
     delete[] temp_d_output;
+    memoryDeallocationForThread(num_of_thread);
 
     std::cout << "Total: " << total_uncompressed_size << " Byte -> " << total_compressed_size << " Byte" << endl;
 
@@ -1754,8 +1838,8 @@ void decompress(const char *destination_file, const char *source_file)
         // std::cout << "Total Device Call " << device_call_count << endl;
 
         // device initialization
-
-        memoryAllocationForThread(maximum_thread_per_device_call);
+        int num_of_thread = std::min(maximum_thread_per_device_call, num_of_chunks);
+        memoryAllocationForThread(num_of_thread);
         cudaError_t err = cudaGetLastError();
         if (err != cudaSuccess)
         {
@@ -1770,6 +1854,70 @@ void decompress(const char *destination_file, const char *source_file)
             std::cerr << "Initialization kernel error: "
                       << cudaGetErrorString(err) << '\n';
             exit(1);
+        }
+
+        // device pointer arrays
+        //  --------------------------------------------------
+        //  Device pointer arrays
+        //  --------------------------------------------------
+        int chunk_B = memory_chunk_level * MB;
+        char **d_input;
+        char **d_output;
+
+        cudaMallocTracked(&d_input, num_of_thread * sizeof(char *));
+        cudaMallocTracked(&d_output, num_of_thread * sizeof(char *));
+
+        // --------------------------------------------------
+        // Size arrays
+        // --------------------------------------------------
+
+        size_t *d_input_size;
+        size_t *d_output_size;
+
+        cudaMallocTracked(&d_input_size,
+                          num_of_thread * sizeof(size_t));
+
+        cudaMallocTracked(&d_output_size, num_of_thread * sizeof(size_t));
+
+        // --------------------------------------------------
+        // Temporary host arrays containing device pointers
+        // --------------------------------------------------
+
+        char **temp_d_input =
+            new char *[num_of_thread];
+
+        char **temp_d_output =
+            new char *[num_of_thread];
+
+        // --------------------------------------------------
+        // Allocate each chunk on DEVICE
+        // --------------------------------------------------
+
+        for (int i = 0; i < num_of_thread; i++)
+        {
+            // Input
+            cudaMallocTracked(
+                &temp_d_input[i],
+                (chunk_B + 2) * sizeof(char));
+
+            // Output
+            //
+            // Currently output size == input size
+            // because your kernel only copies data.
+            cudaMallocTracked(
+                &temp_d_output[i],
+                (chunk_B) * sizeof(char));
+        }
+        // FIX: Allocate memory for the host integer array before copying
+        size_t *output_size = (size_t *)malloc(num_of_thread * sizeof(size_t));
+
+        // FIX: Allocate memory for the array of host pointers before copying
+        char **output = new char *[num_of_thread];
+
+        for (int i = 0; i < num_of_thread; i++)
+        {
+            // FIX: Allocate memory for each specific chunk array before copying
+            output[i] = new char[chunk_B];
         }
 
         // output file configuration
@@ -1797,28 +1945,6 @@ void decompress(const char *destination_file, const char *source_file)
             // preparing for calling device function
 
             // --------------------------------------------------
-            // Device pointer arrays
-            // --------------------------------------------------
-
-            char **d_input;
-            char **d_output;
-
-            begin_device_call_memory();
-            cudaMallocTracked(&d_input, num_of_current_thread * sizeof(char *));
-            cudaMallocTracked(&d_output, num_of_current_thread * sizeof(char *));
-
-            // --------------------------------------------------
-            // Size arrays
-            // --------------------------------------------------
-
-            size_t *d_input_size;
-            size_t *d_output_size;
-
-            cudaMallocTracked(&d_input_size,
-                              num_of_current_thread * sizeof(size_t));
-
-            cudaMallocTracked(&d_output_size, num_of_current_thread * sizeof(size_t));
-            // --------------------------------------------------
             // Copy input sizes: HOST -> DEVICE
             // --------------------------------------------------
 
@@ -1828,39 +1954,10 @@ void decompress(const char *destination_file, const char *source_file)
                 num_of_current_thread * sizeof(size_t),
                 cudaMemcpyHostToDevice);
 
-            // --------------------------------------------------
-            // Temporary host arrays containing device pointers
-            // --------------------------------------------------
-
-            char **temp_d_input =
-                new char *[num_of_current_thread];
-
-            char **temp_d_output =
-                new char *[num_of_current_thread];
-
-            // --------------------------------------------------
-            // Allocate each chunk on DEVICE
-            // --------------------------------------------------
-
             for (int i = 0; i < num_of_current_thread; i++)
             {
-                // Input
-                cudaMallocTracked(
-                    &temp_d_input[i],
-                    input_size[i] * sizeof(char));
 
-                // Output
-                //
-                // Currently output size == input size
-                // because your kernel only copies data.
-                cudaMallocTracked(
-                    &temp_d_output[i],
-                    (uncompressed_size[i]) * sizeof(char));
-
-                // --------------------------------------------------
-                // Copy input chunk: HOST -> DEVICE
-                // --------------------------------------------------
-
+                // host to device copy for each chunk
                 cudaMemcpy(
                     temp_d_input[i],
                     input[i],
@@ -1890,19 +1987,18 @@ void decompress(const char *destination_file, const char *source_file)
 
             int threads = MAX_THREADS_PER_BLOCK;
 
-            int blocks =
-                (num_of_current_thread + threads - 1) / threads;
-
             // std::cout << blocks << " " << threads << endl;
-
-            // initialize the gpu classes
-
-            ////////////////////paq9_cuda call///////////////////////////
-
             // std::cout << "Assigned block: " << blocks << endl;
             threads = std::min(threads, (int)num_of_current_thread);
             // std::cout << "Assigned threads: " << threads << endl;
             // std::cout << "Total threads: " << blocks * threads << endl;
+            int blocks =
+                (num_of_current_thread + threads - 1) / threads;
+
+            // initialize the gpu classes
+            deviceIntialization(num_of_current_thread);
+
+            ////////////////////paq9_cuda call///////////////////////////
 
             paq9_cuda<<<blocks, threads>>>(
                 d_input_size,
@@ -1929,56 +2025,25 @@ void decompress(const char *destination_file, const char *source_file)
                 exit(1);
             }
 
-            finish_device_call_memory();
-
             // --------------------------------------------------
             // Copy output sizes: DEVICE -> HOST
             // --------------------------------------------------
 
-            // FIX: Allocate memory for the host integer array before copying
-            size_t *output_size = (size_t *)malloc(num_of_current_thread * sizeof(size_t));
             cudaMemcpy(output_size, d_output_size, num_of_current_thread * sizeof(size_t), cudaMemcpyDeviceToHost);
 
             // --------------------------------------------------
             // Copy output chunks: DEVICE -> HOST
             // --------------------------------------------------
 
-            // FIX: Allocate memory for the array of host pointers before copying
-            char **output = new char *[num_of_current_thread];
-
             for (int i = 0; i < num_of_current_thread; i++)
             {
-                // FIX: Allocate memory for each specific chunk array before copying
-                output[i] = new char[output_size[i]];
+
                 cudaMemcpy(
                     output[i],
                     temp_d_output[i],
                     output_size[i] * sizeof(char),
                     cudaMemcpyDeviceToHost);
             }
-
-            // --------------------------------------------------
-            // Free DEVICE chunk memory
-            // --------------------------------------------------
-
-            for (int i = 0; i < num_of_current_thread; i++)
-            {
-                cudaFree(temp_d_input[i]);
-                cudaFree(temp_d_output[i]);
-            }
-
-            // --------------------------------------------------
-            // Free DEVICE arrays
-            // --------------------------------------------------
-
-            cudaFree(d_input);
-            cudaFree(d_output);
-
-            cudaFree(d_input_size);
-            cudaFree(d_output_size);
-
-            delete[] temp_d_input;
-            delete[] temp_d_output;
 
             // Inside your main writing logic:
 
@@ -2000,6 +2065,30 @@ void decompress(const char *destination_file, const char *source_file)
         dest.close();
         std::cout << "Total: " << total_compressed_size << " Byte -> "
                   << total_uncompressed_size << " Byte" << endl;
+        // --------------------------------------------------
+        // Free DEVICE chunk memory
+        // --------------------------------------------------
+
+        for (int i = 0; i < num_of_thread; i++)
+        {
+            cudaFree(temp_d_input[i]);
+            cudaFree(temp_d_output[i]);
+        }
+
+        // --------------------------------------------------
+        // Free DEVICE arrays
+        // --------------------------------------------------
+
+        cudaFree(d_input);
+        cudaFree(d_output);
+
+        cudaFree(d_input_size);
+        cudaFree(d_output_size);
+
+        delete[] temp_d_input;
+        delete[] temp_d_output;
+
+        memoryDeallocationForThread(num_of_thread);
     }
     else
     {
@@ -2121,12 +2210,9 @@ int main(int argc, char **args)
     cudaDeviceSynchronize(); // GPU কাজ শেষ হওয়া নিশ্চিত
 
     std::cout << "Total GPU memory allocated: "
-              << maximum_device_call_memory << " bytes ("
-              << static_cast<double>(maximum_device_call_memory) / (1024 * 1024)
+              << total_cuda_malloc_allocated << " bytes ("
+              << static_cast<double>(total_cuda_malloc_allocated) / (1024 * 1024)
               << " MiB)" << endl;
-    std::cout << "  cudaMalloc: " << maximum_cuda_malloc_for_device_call
-              << " bytes; device heap: " << maximum_device_heap_for_device_call
-              << " bytes" << endl;
 
     auto end = std::chrono::steady_clock::now();
 
