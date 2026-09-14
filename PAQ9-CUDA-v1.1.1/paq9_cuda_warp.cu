@@ -67,7 +67,7 @@ typedef unsigned int U32;
 #define DECOMPRESS 1
 #define endl std::endl
 constexpr size_t MB = 1024 * 1024;
-int memory_level = 1;       // default memory level MEM=1<<22+memory_level;
+int memory_level = 1;       // default memory level MEM=1<<19+memory_level;
 int memory_chunk_level = 1; // default memory chunks 1MB
 int level = 1;
 size_t total_uncompressed_size = 0;
@@ -1323,7 +1323,7 @@ void memoryAllocationForThread(int thread_count)
     init<<<1, 1>>>(memory_level, log_table);
     cudaDeviceSynchronize();
 
-    U32 MEM_host = 1U << (22 + memory_level);
+    U32 MEM_host = 1U << (19 + memory_level);
 
     cudaMallocTracked(&buffers, thread_count * sizeof(ThreadBuffers));
 
@@ -1472,8 +1472,8 @@ void compress(char *destination_file, char *source_file)
     source.seekg(0, std::ios::beg);
 
     memory_chunk_level = (1 << (level - 1));
-    memory_level = getMemoryLevelFromBytes(memory_chunk_level * MB);
-    size_t memory_per_thread = 3.5 * getBytesFromMemoryLevel(memory_level);
+    memory_level = memory_chunk_level;
+    size_t memory_per_thread = 50 * memory_chunk_level * MB;
 
     int maximum_thread_per_device_call = (maximum_memory + memory_per_thread - 1) / memory_per_thread;
 
@@ -1865,7 +1865,7 @@ void decompress(const char *destination_file, const char *source_file)
         level = get4_stream(source);
         int num_of_chunks = get4_stream(source);
 
-        size_t memory_per_thread = 3.5 * getBytesFromMemoryLevel(memory_level);
+        size_t memory_per_thread = 3.5 * memory_chunk_level * MB;
 
         int maximum_thread_per_device_call = (maximum_memory + memory_per_thread - 1) / memory_per_thread;
         int device_call_count = (num_of_chunks + maximum_thread_per_device_call - 1) / maximum_thread_per_device_call;

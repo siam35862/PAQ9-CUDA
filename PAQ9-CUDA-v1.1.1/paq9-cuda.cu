@@ -417,7 +417,7 @@ __device__ HashTable<B>::~HashTable()
 
 ////////////////////////// LZP /////////////////////////
 
-__device__ size_t MEM = 1 << (22 + 1); // Global memory limit, 1 << 22+(memory option)
+__device__ size_t MEM = 1 << (19 + 1); // Global memory limit, 1 << 22+(memory option)
 __device__ inline bool isalpha_device(char ch)
 {
     return (ch >= 'A' && ch <= 'Z') ||
@@ -1072,7 +1072,7 @@ size_t getBytesFromMemoryLevel(int n)
     if (n < 1 || n > 9)
         return SIZE_MAX; // ভুল ইনপুট — unsigned, তাই -1 ব্যবহার করা যাবে না
 
-    size_t MEM = (size_t)1 << (22 + n); // MEM = 2^(22+n)
+    size_t MEM = (size_t)1 << (19 + n); // MEM = 2^(19+n)
     size_t total_bytes = (size_t)(0.75 * MEM) + 13030528ULL;
 
     return total_bytes;
@@ -1184,7 +1184,7 @@ __global__ void init(int memory_level, U8 *log_table)
     int tid = get_tid();
     if (tid == 0)
     {
-        MEM = 1 << (22 + memory_level);
+        MEM = 1 << (19 + memory_level);
         squash = new Squash();
         stretch = new Stretch();
         ilog = new Ilog(log_table);
@@ -1388,8 +1388,8 @@ void compress(char *destination_file, char *source_file)
     source.seekg(0, std::ios::beg);
 
     memory_chunk_level = (1 << (level - 1));
-    memory_level = getMemoryLevelFromBytes(memory_chunk_level * MB);
-    size_t memory_per_thread = 3.5 * getBytesFromMemoryLevel(memory_level);
+    memory_level = memory_chunk_level * 2;
+    size_t memory_per_thread = 3.5 * memory_level * MB;
 
     int maximum_thread_per_device_call = (maximum_memory + memory_per_thread - 1) / memory_per_thread;
 
@@ -1871,7 +1871,7 @@ void decompress(const char *destination_file, const char *source_file)
         // int device_call_count = get4_stream(source);
         // int maximum_thread_per_device_call = get4_stream(source);
 
-        size_t memory_per_thread = 3.5 * getBytesFromMemoryLevel(memory_level);
+        size_t memory_per_thread = 3.5 * memory_chunk_level * MB;
 
         int maximum_thread_per_device_call = (maximum_memory + memory_per_thread - 1) / memory_per_thread;
         int device_call_count = (num_of_chunks + maximum_thread_per_device_call - 1) / maximum_thread_per_device_call;

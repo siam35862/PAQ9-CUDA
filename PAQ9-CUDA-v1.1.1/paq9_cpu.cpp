@@ -1068,7 +1068,7 @@ void compress(const char *destination_file, const char *source_file)
     source.close();
 
     memory_chunk_level = (1 << (level - 1));
-    memory_level = getMemoryLevelFromBytes((size_t)memory_chunk_level * MB);
+    memory_level=memory_chunk_level;
     size_t chunk_B = (size_t)memory_chunk_level * MB;
     int num_of_chunks = total_B == 0 ? 0 : (int)((total_B + chunk_B - 1) / chunk_B);
 
