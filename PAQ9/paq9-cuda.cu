@@ -672,7 +672,7 @@ __device__ HashTable<B>::HashTable(int n) : table(0), raw_table(0), N(n)
     assert(B >= 2 && (B & B - 1) == 0);
     assert(N >= B * 4 && (N & N - 1) == 0);
     allocator[get_tid()]->alloc(table, N + B * 4 + 64);
-    raw_table = table;                     // remember true allocation address
+    raw_table = table;                                          // remember true allocation address
     table += 64 - int(reinterpret_cast<uintptr_t>(table) & 63); // align on cache line boundary
 }
 
@@ -1490,7 +1490,7 @@ void compress(char *destination_file, char *source_file)
     maximum_free_memory = getMaximumFreeMemory();
 
     size_t maximum_memory;
-    
+
     maximum_memory = (size_t)4095 * 1024 * 1024; // 4GB
     maximum_memory = std::min(maximum_free_memory, maximum_heap_limit);
     maximum_memory = 5 * maximum_memory / 10;
@@ -1632,7 +1632,7 @@ void compress(char *destination_file, char *source_file)
         size_t *d_output_size;
 
         cudaMallocTracked(&d_input_size,
-                  num_of_current_thread * sizeof(size_t));
+                          num_of_current_thread * sizeof(size_t));
 
         cudaMallocTracked(&d_output_size, num_of_current_thread * sizeof(size_t));
         // --------------------------------------------------
@@ -1920,6 +1920,24 @@ void decompress(const char *destination_file, const char *source_file)
         size_t maximum_memory = std::min(maximum_free_memory, maximum_heap_limit);
         maximum_memory = 5 * maximum_memory / 10;
 
+        cudaDeviceSetLimit(cudaLimitMallocHeapSize, maximum_memory);
+        cudaError_t err1;
+        err1 = cudaGetLastError();
+        if (err1 != cudaSuccess)
+        {
+            std::cerr << "Launch error heap: "
+                      << cudaGetErrorString(err1) << '\n';
+            exit(1);
+        }
+
+        err1 = cudaDeviceSynchronize();
+        if (err1 != cudaSuccess)
+        {
+            std::cerr << "Kernel error heap: "
+                      << cudaGetErrorString(err1) << '\n';
+            exit(1);
+        }
+
         size_t usize = get8_stream(source); // uncompressed total size
         memory_chunk_level = get4_stream(source);
         memory_level = get4_stream(source);
@@ -2189,7 +2207,7 @@ void decompress(const char *destination_file, const char *source_file)
         source.close();
         dest.close();
         std::cout << "Total: " << total_compressed_size << " Byte -> "
-              << total_uncompressed_size << " Byte" << endl;
+                  << total_uncompressed_size << " Byte" << endl;
     }
     else
     {
