@@ -762,8 +762,13 @@ private:
     size_t usize, csize; // Buffered uncompressed and compressed sizes
     double usum, csum;   // Total of usize, csize
 
+    // In DECOMPRESS mode, total_size is the END of the current
+    // compressed block, not the end of the whole input chunk.
+    bool valid;
+
 public:
     size_t iterator_size;
+    __device__ bool is_valid() const { return valid; }
     __device__ Encoder(int m, char *temp, unsigned char *buffer_ptr, size_t tsz, size_t itr);
     __device__ ~Encoder();   // frees buf (COMPRESS mode only; inout is not owned by Encoder)
     __device__ bool flush(); // call this when compression is finished
@@ -786,12 +791,30 @@ public:
         while (((x1 ^ x2) & 0xff000000) == 0)
         { // pass equal leading bytes of range
             if (mode == COMPRESS)
+            {
+                if (csize >= BUFSIZE)
+                {
+                    valid = false;
+                    return 0;
+                }
                 buffer[csize++] = x2 >> 24;
+            }
+
             x1 <<= 8;
             x2 = (x2 << 8) + 255;
+
             if (mode == DECOMPRESS)
-                x = (x << 8) + (inout[iterator_size++] & 255);
-            ;
+            {
+                // Never read outside the current compressed block.
+                if (iterator_size >= total_size)
+                {
+                    valid = false;
+                    return 0;
+                }
+
+                x = (x << 8) +
+                    ((unsigned char)inout[iterator_size++]);
+            }
         }
         return y;
     }
@@ -809,13 +832,22 @@ public:
 
 // Create in mode m (COMPRESS or DECOMPRESS) with f opened as the archive.
 __device__ Encoder::Encoder(int m, char *temp, unsigned char *buffer_ptr, size_t tsz, size_t itr) : mode(m), inout(temp), buffer(buffer_ptr), total_size(tsz), iterator_size(itr), x1(0), x2(0xffffffff), x(0),
-                                                                                                    usize(0), csize(0), usum(0), csum(0)
+                                                                                                    usize(0), csize(0), usum(0), csum(0), valid(true)
 {
-    int tid = get_tid();
     if (mode == DECOMPRESS)
-    { // x = first 4 bytes of archive
+    {
+        // A compressed block must contain at least the 4-byte initial
+        // arithmetic-coder state.
+        if (iterator_size > total_size || total_size - iterator_size < 4)
+        {
+            valid = false;
+            return;
+        }
+
+        // x = first 4 bytes of the current compressed block
         for (int i = 0; i < 4; ++i)
-            x = (x << 8) + (inout[iterator_size++] & 255);
+            x = (x << 8) + ((unsigned char)inout[iterator_size++]);
+
         csize = 4;
     }
     // else if (!buf)
@@ -883,14 +915,18 @@ __device__ bool Encoder::flush()
     return true;
 }
 
-__device__ size_t get4(size_t &itr, const char *in)
+__device__ bool get4(size_t &itr, const char *in, size_t input_size, size_t &value)
 {
+    if (itr > input_size || input_size - itr < 4)
+        return false;
+
     size_t r = (unsigned char)in[itr++];
     r = r * 256 + (unsigned char)in[itr++];
     r = r * 256 + (unsigned char)in[itr++];
     r = r * 256 + (unsigned char)in[itr++];
 
-    return r;
+    value = r;
+    return true;
 }
 
 __global__ void
@@ -900,6 +936,7 @@ paq9_cuda(
     size_t *output_size,
     char **output,
     unsigned char **buffer,
+    size_t output_capacity,
     int num_of_chunks, int mode, int memory_level)
 {
     int tid = get_tid();
@@ -957,46 +994,158 @@ paq9_cuda(
     }
     else
     {
-        int itr2 = 0;
-        // decompress
+        size_t itr2 = 0;
 
-        if (input[tid][0] == '1')
+        // Decompress
+        if (input_size[tid] == 0)
         {
-            int itr = 0;
-            itr2 = 1;
-            while (itr2 < input_size[tid])
+            output_size[tid] = 0;
+        }
+        else if (input[tid][0] == '1')
+        {
+            // Stored/uncompressed chunk.
+            size_t itr = 0;
+            size_t src = 1;
+
+            while (src < input_size[tid])
             {
-                output[tid][itr++] = input[tid][itr2++];
+                output[tid][itr++] = input[tid][src++];
             }
+
             output_size[tid] = itr;
         }
         else
         {
-            size_t usize;
-            itr2 = 0;
+            // Archive layout inside this chunk:
+            //   1 byte mode
+            //   4 byte usize
+            //   4 byte csize
+            //   csize bytes compressed data
+            //   repeat...
             size_t itr = 1;
+
             while (itr < input_size[tid])
             {
-                usize = get4(itr, input[tid]);
-                get4(itr, input[tid]); // csize
-                Encoder encoder(mode, input[tid], buffer[tid], input_size[tid], itr);
+                size_t usize = 0;
+                size_t csize = 0;
 
-                while (usize--)
+                if (!get4(itr, input[tid], input_size[tid], usize))
                 {
+                    printf(
+                        "PAQ9 CUDA: invalid usize header, tid=%d, itr=%zu, input=%zu\n",
+                        tid, itr, input_size[tid]);
+                    output_size[tid] = itr2;
+                    break;
+                }
+
+                if (!get4(itr, input[tid], input_size[tid], csize))
+                {
+                    printf(
+                        "PAQ9 CUDA: invalid csize header, tid=%d, itr=%zu, input=%zu\n",
+                        tid, itr, input_size[tid]);
+                    output_size[tid] = itr2;
+                    break;
+                }
+
+                const size_t block_start = itr;
+
+                // Overflow-safe block-end calculation.
+                if (csize > input_size[tid] - block_start)
+                {
+                    printf(
+                        "PAQ9 CUDA: invalid block, tid=%d, start=%zu, csize=%zu, input=%zu\n",
+                        tid, block_start, csize, input_size[tid]);
+                    output_size[tid] = itr2;
+                    break;
+                }
+
+                const size_t block_end = block_start + csize;
+
+                if (csize < 4)
+                {
+                    printf(
+                        "PAQ9 CUDA: compressed block too small, tid=%d, csize=%zu\n",
+                        tid, csize);
+                    output_size[tid] = itr2;
+                    break;
+                }
+
+                Encoder encoder(
+                    mode,
+                    input[tid],
+                    buffer[tid],
+                    block_end,
+                    block_start);
+
+                if (!encoder.is_valid())
+                {
+                    printf(
+                        "PAQ9 CUDA: encoder initialization failed, tid=%d\n",
+                        tid);
+                    output_size[tid] = itr2;
+                    break;
+                }
+
+                bool block_ok = true;
+
+                for (size_t n = 0; n < usize; ++n)
+                {
+                    // The archive was produced from a chunk no larger than
+                    // chunk_B, so this also protects the device output.
+                    if (itr2 >= output_capacity)
+                    {
+                        printf(
+                            "PAQ9 CUDA: output overflow, tid=%d, out=%zu, usize=%zu\n",
+                            tid, itr2, usize);
+                        block_ok = false;
+                        break;
+                    }
 
                     int cp = lzp[tid]->predict_char();
+
                     if (encoder.code() == 0)
                     {
                         cp = 1;
                         while (cp < 256)
+                        {
                             cp += cp + encoder.code();
+
+                            if (!encoder.is_valid())
+                            {
+                                block_ok = false;
+                                break;
+                            }
+                        }
+
+                        if (!block_ok)
+                            break;
+
                         cp &= 255;
                     }
-                    output[tid][itr2++] = cp;
+
+                    if (!encoder.is_valid())
+                    {
+                        block_ok = false;
+                        break;
+                    }
+
+                    output[tid][itr2++] = (char)cp;
                     lzp[tid]->update(cp);
                 }
-                itr = encoder.iterator_size;
 
+                if (!block_ok)
+                {
+                    printf(
+                        "PAQ9 CUDA: invalid compressed block while decoding, tid=%d, start=%zu, end=%zu\n",
+                        tid, block_start, block_end);
+                    output_size[tid] = itr2;
+                    break;
+                }
+
+                // Do NOT use encoder.iterator_size here. Arithmetic coding
+                // may stop before the padding bytes at the end of a block.
+                // csize tells us exactly where the next block begins.
+                itr = block_end;
                 output_size[tid] = itr2;
             }
         }
@@ -1236,11 +1385,6 @@ __global__ void freeDeviceObjects(int thread_count)
         delete lzp[tid];
         delete predictor[tid];
     }
-}
-
-__global__ void freeDeviceObjects()
-{
-    int tid = get_tid();
 
     if (tid == 0)
     {
@@ -1249,6 +1393,7 @@ __global__ void freeDeviceObjects()
         delete ilog;
     }
 }
+
 // ---------------------------------------------------------
 // Host-side: frees every buffer allocated with cudaMallocTracked
 // in memoryAllocationForThread(), using plain cudaFree.
@@ -1260,7 +1405,6 @@ void memoryDeallocationForThread(int thread_count)
     //    buffers (buffers[i].*) are still valid memory.
     int threadsPerBlock = 256;
     int blocks = (thread_count + threadsPerBlock - 1) / threadsPerBlock;
-    freeDeviceObjects<<<1, 1>>>();
     freeDeviceObjects<<<blocks, threadsPerBlock>>>(thread_count);
     cudaDeviceSynchronize();
 
@@ -1586,10 +1730,23 @@ void compress(char *destination_file, char *source_file)
             d_input,
             d_output_size,
             d_output, d_encoder_buffer,
+            (size_t)chunk_B + 2,
             num_of_current_thread, COMPRESS, memory_level);
-        freeDeviceObjects<<<blocks, threads>>>(num_of_current_thread);
 
-        cudaDeviceSynchronize();
+        cudaError_t kernel_launch_error = cudaGetLastError();
+        if (kernel_launch_error != cudaSuccess)
+        {
+            std::cerr << "Kernel launch error: " << cudaGetErrorString(kernel_launch_error) << '\n';
+            exit(1);
+        }
+
+        cudaError_t kernel_execution_error = cudaDeviceSynchronize();
+        if (kernel_execution_error != cudaSuccess)
+        {
+            std::cerr << "Kernel execution error: " << cudaGetErrorString(kernel_execution_error) << '\n';
+            exit(1);
+        }
+
         auto kernel_end_time = std::chrono::high_resolution_clock::now();
         auto kernel_duration = std::chrono::duration_cast<std::chrono::milliseconds>(kernel_end_time - kernel_start_time);
 
@@ -1886,12 +2043,36 @@ void decompress(const char *destination_file, const char *source_file)
         char **temp_d_output =
             new char *[num_of_thread];
 
+        // --------------------------------------------------
+        // Allocate each chunk on DEVICE
+        // --------------------------------------------------
+
+        for (int i = 0; i < num_of_thread; i++)
+        {
+            // Input
+            cudaMallocTracked(
+                &temp_d_input[i],
+                (chunk_B + MB) * sizeof(char));
+
+            // Output
+            //
+            // Currently output size == input size
+            // because your kernel only copies data.
+            cudaMallocTracked(
+                &temp_d_output[i],
+                (chunk_B + MB) * sizeof(char));
+        }
         // FIX: Allocate memory for the host integer array before copying
         size_t *output_size = (size_t *)malloc(num_of_thread * sizeof(size_t));
 
         // FIX: Allocate memory for the array of host pointers before copying
         char **output = new char *[num_of_thread];
 
+        for (int i = 0; i < num_of_thread; i++)
+        {
+            // FIX: Allocate memory for each specific chunk array before copying
+            output[i] = new char[chunk_B + MB];
+        }
         std::vector<char *> input(num_of_thread, nullptr);
 
         unsigned char **d_encoder_buffer;
@@ -1934,27 +2115,14 @@ void decompress(const char *destination_file, const char *source_file)
                 cudaMemcpyHostToDevice);
 
             for (int i = 0; i < num_of_current_thread; i++)
-
             {
-                // Input
-                cudaMallocTracked(
-                    &temp_d_input[i],
-                    (input_size[i]) * sizeof(char));
 
-                // Output
-                //
-                // Currently output size == input size
-                // because your kernel only copies data.
-                cudaMallocTracked(
-                    &temp_d_output[i],
-                    (uncompressed_size[i]) * sizeof(char));
                 // host to device copy for each chunk
                 cudaMemcpy(
                     temp_d_input[i],
                     input[i],
                     input_size[i] * sizeof(char),
                     cudaMemcpyHostToDevice);
-                output[i] = new char[uncompressed_size[i]];
             }
 
             // --------------------------------------------------
@@ -1972,8 +2140,8 @@ void decompress(const char *destination_file, const char *source_file)
                 temp_d_output,
                 num_of_current_thread * sizeof(char *),
                 cudaMemcpyHostToDevice);
-
-            // device encoder buffer
+            
+                // device encoder buffer
 
             cudaMemcpy(d_encoder_buffer, encoder_buffer, num_of_current_thread * sizeof(unsigned char *), cudaMemcpyHostToDevice);
 
@@ -2005,8 +2173,8 @@ void decompress(const char *destination_file, const char *source_file)
                 d_input,
                 d_output_size,
                 d_output, d_encoder_buffer,
+                (size_t)chunk_B + MB,
                 num_of_current_thread, DECOMPRESS, memory_level);
-            freeDeviceObjects<<<blocks, threads>>>(num_of_current_thread);
 
             cudaDeviceSynchronize();
             auto kernel_end_time = std::chrono::high_resolution_clock::now();
@@ -2060,12 +2228,6 @@ void decompress(const char *destination_file, const char *source_file)
                 total_input += input_size[i];
                 total_output += output_size[i];
                 // std::cout << input_size[i] << " Byte -> " << output_size[i] << " Byte" << endl;
-                cudaFree(temp_d_input[i]);
-                cudaFree(temp_d_output[i]);
-                if (input[i] != nullptr)
-                    delete[] input[i];
-                if (output[i] != nullptr)
-                    delete[] output[i];
             }
             // std::cout << "From Device Call: " << total_input << " Byte -> " << total_output << " Byte" << endl;
             total_compressed_size += total_input;
