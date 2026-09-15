@@ -1388,8 +1388,8 @@ void compress(char *destination_file, char *source_file)
     source.seekg(0, std::ios::beg);
 
     memory_chunk_level = (1 << (level - 1));
-    memory_level = memory_chunk_level * 2;
-    size_t memory_per_thread = 3.5 * memory_level * MB;
+    memory_level = memory_chunk_level;
+    size_t memory_per_thread = 50 * memory_level * MB;
 
     int maximum_thread_per_device_call = (maximum_memory + memory_per_thread - 1) / memory_per_thread;
 
@@ -1871,7 +1871,7 @@ void decompress(const char *destination_file, const char *source_file)
         // int device_call_count = get4_stream(source);
         // int maximum_thread_per_device_call = get4_stream(source);
 
-        size_t memory_per_thread = 3.5 * memory_chunk_level * MB;
+        size_t memory_per_thread = 50 * memory_chunk_level * MB;
 
         int maximum_thread_per_device_call = (maximum_memory + memory_per_thread - 1) / memory_per_thread;
         int device_call_count = (num_of_chunks + maximum_thread_per_device_call - 1) / maximum_thread_per_device_call;
