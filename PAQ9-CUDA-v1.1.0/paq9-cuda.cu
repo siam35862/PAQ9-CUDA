@@ -1275,7 +1275,7 @@ paq9_cuda(
 
         if (input[tid][0] == '1')
         {
-            int itr = 1;
+            int itr = 0;
             itr2 = 1;
             while (itr2 < input_size[tid])
             {
