@@ -956,9 +956,6 @@ paq9_cuda(
     if (chunk >= num_of_chunks)
         return;
 
-    if (lane == 0)
-        output_size[chunk] = 100;
-
     if (mode == COMPRESS)
     {
         size_t itr = 0;

@@ -906,7 +906,6 @@ paq9_cuda(
 
     if (tid >= num_of_chunks)
         return;
-    output_size[tid] = 100;
 
     // printf("%8d KiB\b\b\b\b\b\b\b\b\b\b\b\b", allocated >> 10);
 
@@ -962,13 +961,13 @@ paq9_cuda(
 
         if (input[tid][0] == '1')
         {
-            int itr = 0;
-            itr2 = 1;
-            while (itr2 < input_size[tid])
+            int itr = 1;
+            itr2 = 0;
+            while (itr < input_size[tid])
             {
-                output[tid][itr++] = input[tid][itr2++];
+                output[tid][itr2++] = input[tid][itr++];
             }
-            output_size[tid] = itr;
+            output_size[tid] = itr2;
         }
         else
         {
@@ -997,7 +996,11 @@ paq9_cuda(
                 }
                 itr = encoder.iterator_size;
             }
-            output_size[tid] = itr2;
+            if (output_size[tid] < itr2)
+            {
+                printf("%d thread failed to decode ", tid);
+                return;
+            }
         }
     }
 
@@ -1929,6 +1932,7 @@ void decompress(const char *destination_file, const char *source_file)
             exit(1);
         }
         auto start_time = std::chrono::high_resolution_clock::now();
+        int expected=0;
         for (int call_count = 0; call_count < device_call_count; call_count++)
         {
             // std::cout << "\n\nDevice Call No: " << call_count + 1 << endl;
@@ -1943,6 +1947,7 @@ void decompress(const char *destination_file, const char *source_file)
                 uncompressed_size[i] = get4_stream(source);
                 input_size[i] = get4_stream(source);
                 input[i] = get_input(source, input_size[i]);
+                expected+=uncompressed_size[i];
             }
 
             // preparing for calling device function
@@ -2090,6 +2095,7 @@ void decompress(const char *destination_file, const char *source_file)
         std::cout << "Compressed  ->  Decompressed \n";
         std::cout << "Total: " << total_compressed_size << " Byte -> "
                   << total_uncompressed_size << " Byte" << endl;
+        std::cout<<"Expected: "<<expected<<"Bytes\n";
         // --------------------------------------------------
         // Free DEVICE chunk memory
         // --------------------------------------------------
