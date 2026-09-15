@@ -69,7 +69,7 @@ typedef unsigned int U32;
 #define HEAP_SIZE 64 // MB
 constexpr size_t MB = 1024 * 1024;
 #define base_memory_level 19 // default base memory level, MEM=1<<base_memory_level+memory_level
-#define GPU_VRAM_LEVEL 4     // perchantage of VRAM , default 5 means 50% of VRAM will be used for compression
+#define GPU_VRAM_LEVEL 10    // perchantage of VRAM , default 5 means 50% of VRAM will be used for compression
 int memory_level = 1;        // default memory level MEM=1<<base_memory_level+memory_level;
 int chunk_MB = 1;            // default memory chunks 1MB
 int chunk_level = 1;
@@ -1039,7 +1039,7 @@ paq9_cuda(
         {
             if (lane == 0)
             {
-                int itr = 1, itr2 = 1;
+                int itr = 0, itr2 = 1;
                 while (itr2 < input_size[chunk])
                 {
                     output[chunk][itr++] = input[chunk][itr2++];
@@ -1872,7 +1872,7 @@ void decompress(const char *destination_file, const char *source_file)
 
             cudaMallocTracked(
                 &temp_d_output[i],
-                (chunk_B) * sizeof(char));
+                (chunk_B+2) * sizeof(char));
         }
         size_t *output_size = (size_t *)malloc(num_of_thread * sizeof(size_t));
 
@@ -1880,7 +1880,7 @@ void decompress(const char *destination_file, const char *source_file)
 
         for (int i = 0; i < num_of_thread; i++)
         {
-            output[i] = new char[chunk_B];
+            output[i] = new char[chunk_B+2];
         }
         std::vector<char *> input(num_of_thread, nullptr);
         std::ofstream dest(destination_file, std::ios::binary);

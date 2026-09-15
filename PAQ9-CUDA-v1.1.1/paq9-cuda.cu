@@ -20,7 +20,7 @@ typedef unsigned int U32;
 #define COMPRESS 0
 #define DECOMPRESS 1
 #define endl std::endl
-#define GPU_LEVEL 9  // percentage of GPU memory to be used for compression/decompression
+#define GPU_LEVEL 5   // percentage of GPU memory to be used for compression/decompression
 #define HEAP_SIZE 128 // MB
 constexpr size_t MB = 1024 * 1024;
 
@@ -29,7 +29,6 @@ int chunk_MB = 1;     // default memory chunks 1MB
 int chunk_level = 1;
 size_t total_uncompressed_size = 0;
 size_t total_compressed_size = 0;
-
 
 unsigned long long total_cuda_malloc_allocated = 0;
 
@@ -963,7 +962,7 @@ paq9_cuda(
 
         if (input[tid][0] == '1')
         {
-            int itr = 1;
+            int itr = 0;
             itr2 = 1;
             while (itr2 < input_size[tid])
             {
@@ -1898,7 +1897,7 @@ void decompress(const char *destination_file, const char *source_file)
             // because your kernel only copies data.
             cudaMallocTracked(
                 &temp_d_output[i],
-                (chunk_B) * sizeof(char));
+                (chunk_B + 2) * sizeof(char));
         }
         // FIX: Allocate memory for the host integer array before copying
         size_t *output_size = (size_t *)malloc(num_of_thread * sizeof(size_t));
@@ -1909,7 +1908,7 @@ void decompress(const char *destination_file, const char *source_file)
         for (int i = 0; i < num_of_thread; i++)
         {
             // FIX: Allocate memory for each specific chunk array before copying
-            output[i] = new char[chunk_B];
+            output[i] = new char[chunk_B + 2];
         }
         std::vector<char *> input(num_of_thread, nullptr);
         // output file configuration
@@ -2150,7 +2149,7 @@ void print_usage(const char *prog_name)
     std::cout << "Examples:\n";
     std::cout << "  " << file_name << " -c -8 output.paq -8 input.txt\n";
     std::cout << "  " << file_name << " -d output.paq input.txt\n\n";
-    std::cout<<"Note: [] is optional.\n";
+    std::cout << "Note: [] is optional.\n";
 
     std::cout << "Run again and provide proper arguments.\n";
 }
