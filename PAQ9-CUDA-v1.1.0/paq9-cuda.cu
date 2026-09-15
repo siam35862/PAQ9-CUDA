@@ -1215,7 +1215,6 @@ paq9_cuda(
 
     if (tid >= num_of_chunks)
         return;
-    output_size[tid] = 100;
 
     allocator[tid] = new Alloc();
     predictor[tid] = new Predictor();
