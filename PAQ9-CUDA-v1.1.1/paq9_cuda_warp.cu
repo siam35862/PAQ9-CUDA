@@ -69,7 +69,7 @@ typedef unsigned int U32;
 #define HEAP_SIZE 64 // MB
 constexpr size_t MB = 1024 * 1024;
 #define base_memory_level 19 // default base memory level, MEM=1<<base_memory_level+memory_level
-#define GPU_VRAM_LEVEL 9    // perchantage of VRAM , default 5 means 50% of VRAM will be used for compression
+#define GPU_VRAM_LEVEL 9     // perchantage of VRAM , default 5 means 50% of VRAM will be used for compression
 int memory_level = 1;        // default memory level MEM=1<<base_memory_level+memory_level;
 int chunk_MB = 1;            // default memory chunks 1MB
 int chunk_level = 1;
@@ -1053,7 +1053,7 @@ paq9_cuda(
             size_t itr = 1;
             while (true)
             {
-                int cont = (lane == 0) ? (itr < input_size[chunk] ? 1 : 0) : 0;
+                int cont = (lane == 0) ? (itr2_shared < output_size[chunk] ? 1 : 0) : 0;
                 cont = __shfl_sync(mask, cont, 0);
                 if (!cont)
                     break;
@@ -1578,12 +1578,12 @@ void compress(char *destination_file, char *source_file)
             cudaMemcpyHostToDevice);
 
         // ---- Device Initialization (per-chunk kernel, unchanged geometry) ----
-        auto init_start_time = std::chrono::high_resolution_clock::now();
+        // auto init_start_time = std::chrono::high_resolution_clock::now();
         deviceIntialization(num_of_current_thread);
         cudaDeviceSynchronize();
-        auto init_end_time = std::chrono::high_resolution_clock::now();
-        auto init_duration = std::chrono::duration_cast<std::chrono::milliseconds>(init_end_time - init_start_time);
-        std::cout << "Device initialization time: " << init_duration.count() << " ms" << endl;
+        // auto init_end_time = std::chrono::high_resolution_clock::now();
+        // auto init_duration = std::chrono::duration_cast<std::chrono::milliseconds>(init_end_time - init_start_time);
+        // std::cout << "Device initialization time: " << init_duration.count() << " ms" << endl;
         cudaError_t err1;
         err1 = cudaGetLastError();
         if (err1 != cudaSuccess)
@@ -1602,14 +1602,14 @@ void compress(char *destination_file, char *source_file)
         }
 
         ////////////////////paq9_cuda call (warp-cooperative geometry)////////////////////////////
-        auto kernel_start_time = std::chrono::high_resolution_clock::now();
-        std::cout << "input size: " << input_size[0] << " Byte, Current chunks: " << num_of_current_thread << endl;
+        // auto kernel_start_time = std::chrono::high_resolution_clock::now();
+        // std::cout << "input size: " << input_size[0] << " Byte, Current chunks: " << num_of_current_thread << endl;
 
         int blocks, threads;
         computeWarpLaunchGeometry(num_of_current_thread, blocks, threads);
-        std::cout << "Warp-cooperative launch: " << blocks << " blocks x " << threads
-                  << " threads (" << (32 * num_of_current_thread) << " raw threads for "
-                  << num_of_current_thread << " chunks)" << endl;
+        // std::cout << "Warp-cooperative launch: " << blocks << " blocks x " << threads
+        //           << " threads (" << (32 * num_of_current_thread) << " raw threads for "
+        //           << num_of_current_thread << " chunks)" << endl;
 
         paq9_cuda<<<blocks, threads>>>(
             d_input_size,
@@ -1619,10 +1619,10 @@ void compress(char *destination_file, char *source_file)
             num_of_current_thread, COMPRESS, memory_level);
 
         cudaDeviceSynchronize();
-        auto kernel_end_time = std::chrono::high_resolution_clock::now();
-        auto kernel_duration = std::chrono::duration_cast<std::chrono::milliseconds>(kernel_end_time - kernel_start_time);
+        // auto kernel_end_time = std::chrono::high_resolution_clock::now();
+        // auto kernel_duration = std::chrono::duration_cast<std::chrono::milliseconds>(kernel_end_time - kernel_start_time);
 
-        std::cout << "Kernel execution time: " << kernel_duration.count() << " ms" << endl;
+        // std::cout << "Kernel execution time: " << kernel_duration.count() << " ms" << endl;
         err1 = cudaGetLastError();
         if (err1 != cudaSuccess)
         {
@@ -1872,7 +1872,7 @@ void decompress(const char *destination_file, const char *source_file)
 
             cudaMallocTracked(
                 &temp_d_output[i],
-                (chunk_B+2) * sizeof(char));
+                (chunk_B + 2) * sizeof(char));
         }
         size_t *output_size = (size_t *)malloc(num_of_thread * sizeof(size_t));
 
@@ -1880,7 +1880,7 @@ void decompress(const char *destination_file, const char *source_file)
 
         for (int i = 0; i < num_of_thread; i++)
         {
-            output[i] = new char[chunk_B+2];
+            output[i] = new char[chunk_B + 2];
         }
         std::vector<char *> input(num_of_thread, nullptr);
         std::ofstream dest(destination_file, std::ios::binary);
@@ -1889,7 +1889,7 @@ void decompress(const char *destination_file, const char *source_file)
             std::cout << std::string(destination_file) << " does not created/opened.\n";
             exit(1);
         }
-
+        auto start_time2 = std::chrono::high_resolution_clock::now();
         for (int call_count = 0; call_count < device_call_count; call_count++)
         {
             int num_of_current_thread = std::min(maximum_thread_per_device_call, (num_of_chunks - call_count * maximum_thread_per_device_call));
@@ -1908,6 +1908,11 @@ void decompress(const char *destination_file, const char *source_file)
             cudaMemcpy(
                 d_input_size,
                 input_size.data(),
+                num_of_current_thread * sizeof(size_t),
+                cudaMemcpyHostToDevice);
+            cudaMemcpy(
+                d_output_size,
+                uncompressed_size.data(),
                 num_of_current_thread * sizeof(size_t),
                 cudaMemcpyHostToDevice);
 
@@ -1933,16 +1938,16 @@ void decompress(const char *destination_file, const char *source_file)
                 cudaMemcpyHostToDevice);
 
             // ---- Device Initialization (per-chunk kernel, unchanged geometry) ----
-            auto init_start_time = std::chrono::high_resolution_clock::now();
+            // auto init_start_time = std::chrono::high_resolution_clock::now();
             deviceIntialization(num_of_current_thread);
-            auto init_end_time = std::chrono::high_resolution_clock::now();
-            auto init_duration = std::chrono::duration_cast<std::chrono::milliseconds>(init_end_time - init_start_time);
-            std::cout << "Device initialization time: " << init_duration.count() << " ms" << endl;
+            // auto init_end_time = std::chrono::high_resolution_clock::now();
+            // auto init_duration = std::chrono::duration_cast<std::chrono::milliseconds>(init_end_time - init_start_time);
+            // std::cout << "Device initialization time: " << init_duration.count() << " ms" << endl;
             ////////////////////paq9_cuda call (warp-cooperative geometry)///////////////////////////
 
             int blocks, threads;
             computeWarpLaunchGeometry(num_of_current_thread, blocks, threads);
-            auto kernel_start_time = std::chrono::high_resolution_clock::now();
+            // auto kernel_start_time = std::chrono::high_resolution_clock::now();
             paq9_cuda<<<blocks, threads>>>(
                 d_input_size,
                 d_input,
@@ -1951,9 +1956,9 @@ void decompress(const char *destination_file, const char *source_file)
                 num_of_current_thread, DECOMPRESS, memory_level);
 
             cudaDeviceSynchronize();
-            auto kernel_end_time = std::chrono::high_resolution_clock::now();
-            auto kernel_duration = std::chrono::duration_cast<std::chrono::milliseconds>(kernel_end_time - kernel_start_time);
-            std::cout << "Kernel execution time: " << kernel_duration.count() << " ms" << endl;
+            // auto kernel_end_time = std::chrono::high_resolution_clock::now();
+            // auto kernel_duration = std::chrono::duration_cast<std::chrono::milliseconds>(kernel_end_time - kernel_start_time);
+            // std::cout << "Kernel execution time: " << kernel_duration.count() << " ms" << endl;
 
             cudaError_t err1 = cudaGetLastError();
             if (err1 != cudaSuccess)
@@ -2006,6 +2011,9 @@ void decompress(const char *destination_file, const char *source_file)
 
         source.close();
         dest.close();
+        auto end_time2 = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed_time2 = end_time2 - start_time2;
+        std::cout << "Total Execution Time: " << elapsed_time2.count() << " seconds" << endl;
         std::cout << "Compressed  ->  Decompressed \n";
         std::cout << "Total: " << total_compressed_size << " Byte -> "
                   << total_uncompressed_size << " Byte" << endl;

@@ -975,7 +975,7 @@ paq9_cuda(
             size_t usize;
             itr2 = 0;
             size_t itr = 1;
-            while (itr < input_size[tid])
+            while (itr2 < output_size[tid])
             {
                 usize = get4(itr, input[tid]);
                 get4(itr, input[tid]); // csize
@@ -996,9 +996,8 @@ paq9_cuda(
                     lzp[tid]->update(cp);
                 }
                 itr = encoder.iterator_size;
-
-                output_size[tid] = itr2;
             }
+            output_size[tid] = itr2;
         }
     }
 
@@ -1885,12 +1884,37 @@ void decompress(const char *destination_file, const char *source_file)
 
         char **temp_d_output =
             new char *[num_of_thread];
+        // --------------------------------------------------
+        // Allocate each chunk on DEVICE
+        // --------------------------------------------------
+
+        for (int i = 0; i < num_of_thread; i++)
+        {
+            // Input
+            cudaMallocTracked(
+                &temp_d_input[i],
+                (chunk_B + 5) * sizeof(char));
+
+            // Output
+            //
+            // Currently output size == input size
+            // because your kernel only copies data.
+            cudaMallocTracked(
+                &temp_d_output[i],
+                (chunk_B + 2) * sizeof(char));
+        }
 
         // FIX: Allocate memory for the host integer array before copying
         size_t *output_size = (size_t *)malloc(num_of_thread * sizeof(size_t));
 
         // FIX: Allocate memory for the array of host pointers before copying
         char **output = new char *[num_of_thread];
+
+        for (int i = 0; i < num_of_thread; i++)
+        {
+            // FIX: Allocate memory for each specific chunk array before copying
+            output[i] = new char[chunk_B + 2];
+        }
 
         std::vector<char *> input(num_of_thread, nullptr);
 
@@ -1932,29 +1956,18 @@ void decompress(const char *destination_file, const char *source_file)
                 input_size.data(),
                 num_of_current_thread * sizeof(size_t),
                 cudaMemcpyHostToDevice);
-
+            cudaMemcpy(
+                d_output_size,
+                uncompressed_size.data(),
+                num_of_current_thread * sizeof(size_t),
+                cudaMemcpyHostToDevice);
             for (int i = 0; i < num_of_current_thread; i++)
-
             {
-                // Input
-                cudaMallocTracked(
-                    &temp_d_input[i],
-                    (input_size[i]) * sizeof(char));
-
-                // Output
-                //
-                // Currently output size == input size
-                // because your kernel only copies data.
-                cudaMallocTracked(
-                    &temp_d_output[i],
-                    (uncompressed_size[i]) * sizeof(char));
-                // host to device copy for each chunk
                 cudaMemcpy(
                     temp_d_input[i],
                     input[i],
                     input_size[i] * sizeof(char),
                     cudaMemcpyHostToDevice);
-                output[i] = new char[uncompressed_size[i]];
             }
 
             // --------------------------------------------------
@@ -1992,11 +2005,7 @@ void decompress(const char *destination_file, const char *source_file)
                 (num_of_current_thread + threads - 1) / threads;
 
             // initialize the gpu classes
-            auto init_start_time = std::chrono::high_resolution_clock::now();
             deviceIntialization(num_of_current_thread);
-            auto init_end_time = std::chrono::high_resolution_clock::now();
-            auto init_duration = std::chrono::duration_cast<std::chrono::milliseconds>(init_end_time - init_start_time);
-            std::cout << "Device initialization time: " << init_duration.count() << " ms" << endl;
 
             ////////////////////paq9_cuda call///////////////////////////
             auto kernel_start_time = std::chrono::high_resolution_clock::now();
@@ -2009,9 +2018,6 @@ void decompress(const char *destination_file, const char *source_file)
             freeDeviceObjects<<<blocks, threads>>>(num_of_current_thread);
 
             cudaDeviceSynchronize();
-            auto kernel_end_time = std::chrono::high_resolution_clock::now();
-            auto kernel_duration = std::chrono::duration_cast<std::chrono::milliseconds>(kernel_end_time - kernel_start_time);
-            std::cout << "Kernel execution time: " << kernel_duration.count() << " ms" << endl;
 
             cudaError_t err1 = cudaGetLastError();
             if (err1 != cudaSuccess)
@@ -2060,12 +2066,6 @@ void decompress(const char *destination_file, const char *source_file)
                 total_input += input_size[i];
                 total_output += output_size[i];
                 // std::cout << input_size[i] << " Byte -> " << output_size[i] << " Byte" << endl;
-                cudaFree(temp_d_input[i]);
-                cudaFree(temp_d_output[i]);
-                if (input[i] != nullptr)
-                    delete[] input[i];
-                if (output[i] != nullptr)
-                    delete[] output[i];
             }
             // std::cout << "From Device Call: " << total_input << " Byte -> " << total_output << " Byte" << endl;
             total_compressed_size += total_input;
