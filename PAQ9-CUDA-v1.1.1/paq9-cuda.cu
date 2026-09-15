@@ -20,8 +20,8 @@ typedef unsigned int U32;
 #define COMPRESS 0
 #define DECOMPRESS 1
 #define endl std::endl
-#define GPU_LEVEL 5 // percentage of GPU memory to be used for compression/decompression
-#define HEAP_SIZE 64  // MB
+#define GPU_LEVEL 9  // percentage of GPU memory to be used for compression/decompression
+#define HEAP_SIZE 128 // MB
 constexpr size_t MB = 1024 * 1024;
 
 int memory_level = 1; // default memory level MEM=1<<22+memory_level;
@@ -29,8 +29,7 @@ int chunk_MB = 1;     // default memory chunks 1MB
 int chunk_level = 1;
 size_t total_uncompressed_size = 0;
 size_t total_compressed_size = 0;
-size_t maximum_heap_limit = 8;     // default heap limit
-size_t maximum_free_memory = 1024; // default consider 1GB memory has free
+
 
 unsigned long long total_cuda_malloc_allocated = 0;
 
@@ -2113,14 +2112,56 @@ void decompress(const char *destination_file, const char *source_file)
         exit(1);
     }
 }
+const char *get_file_name(const char *path)
+{
+    const char *slash_pos = strrchr(path, '/');
+    if (slash_pos)
+        return slash_pos + 1;
+
+#ifdef _WIN32
+    const char *backslash_pos = strrchr(path, '\\');
+    if (backslash_pos)
+        return backslash_pos + 1;
+#endif
+
+    return path;
+}
+
+void print_usage(const char *prog_name)
+{
+    const char *file_name = get_file_name(prog_name);
+
+    std::cout << "Usage:\n";
+    std::cout << "  Compress:   " << file_name << " -c [-<memory_level>] <destination_file> [-<chunk_level>] <source_file>\n";
+    std::cout << "  Decompress: " << file_name << " -d <source_file> [<destination_file>]\n\n";
+
+    std::cout << "  <memory_level> and <chunk_level> must be between 1 and 11.\n";
+    std::cout << "  If not given, or out of bounds, both default to 1.\n\n";
+
+    std::cout << "  memory_level: controls how much GPU memory (VRAM) is used.\n";
+    std::cout << "    - Use a HIGHER value if you have more VRAM available,\n";
+    std::cout << "      or if chunk_level is set higher (higher chunk levels need more memory).\n";
+    std::cout << "    - Use a LOWER value if you have limited VRAM.\n\n";
+
+    std::cout << "  chunk_level: controls compression ratio vs. speed.\n";
+    std::cout << "    - Use a HIGHER value for a better compression ratio (slower).\n";
+    std::cout << "    - Use a LOWER value for faster, smaller (less thorough) compression.\n\n";
+
+    std::cout << "Examples:\n";
+    std::cout << "  " << file_name << " -c -8 output.paq -8 input.txt\n";
+    std::cout << "  " << file_name << " -d output.paq input.txt\n\n";
+    std::cout<<"Note: [] is optional.\n";
+
+    std::cout << "Run again and provide proper arguments.\n";
+}
 int main(int argc, char **args)
 {
 
     auto start = std::chrono::steady_clock::now();
-    std::cout << "CUDA version of PAQ9 started successfully.\n\n";
+    std::cout << "CUDA version of PAQ9 (warp-cooperative) started successfully.\n\n";
     if (argc < 3)
     {
-        std::cout << "Run again and provide proper arguments.\n";
+        print_usage(args[0]);
         exit(1);
     }
     int mode;
@@ -2134,13 +2175,13 @@ int main(int argc, char **args)
             mode = DECOMPRESS;
         else
         {
-            std::cout << "Run again and provide arguments in correct way.\n";
+            print_usage(args[0]);
             exit(1);
         }
     }
     else
     {
-        std::cout << "Run again and provide arguments in correct way.\n";
+        print_usage(args[0]);
         exit(1);
     }
     std::cout << "Working mode: "
@@ -2160,7 +2201,7 @@ int main(int argc, char **args)
                     temp += args[ind][i];
                 else
                 {
-                    std::cout << "Run again and provide arguments in correct way.\n";
+                    print_usage(args[0]);
                     exit(1);
                 }
             }
@@ -2174,9 +2215,10 @@ int main(int argc, char **args)
         }
         else if (ind >= argc)
         {
-            std::cout << "Run again and provide arguments in correct way.\n";
+            print_usage(args[0]);
             exit(1);
         }
+
         if (ind < argc)
         {
             destination_file_name = args[ind];
@@ -2184,7 +2226,7 @@ int main(int argc, char **args)
         }
         else
         {
-            std::cout << "Run again and provide arguments in correct way.\n";
+            print_usage(args[0]);
             exit(1);
         }
 
@@ -2199,7 +2241,7 @@ int main(int argc, char **args)
                     temp += args[ind][i];
                 else
                 {
-                    std::cout << "Run again and provide arguments in correct way.\n";
+                    print_usage(args[0]);
                     exit(1);
                 }
             }
@@ -2213,7 +2255,7 @@ int main(int argc, char **args)
         }
         else if (ind >= argc)
         {
-            std::cout << "Run again and provide arguments in correct way.\n";
+            print_usage(args[0]);
             exit(1);
         }
 
@@ -2224,7 +2266,7 @@ int main(int argc, char **args)
         }
         else
         {
-            std::cout << "Run again and provide arguments in correct way.\n";
+            print_usage(args[0]);
             exit(1);
         }
 
@@ -2239,7 +2281,7 @@ int main(int argc, char **args)
         }
         else
         {
-            std::cout << "Run again and provide arguments in correct way.\n";
+            print_usage(args[0]);
             exit(1);
         }
         if (ind < argc)
@@ -2251,7 +2293,7 @@ int main(int argc, char **args)
         decompress(destination_file_name, source_file_name);
     }
 
-    cudaDeviceSynchronize(); // GPU কাজ শেষ হওয়া নিশ্চিত
+    cudaDeviceSynchronize();
 
     std::cout << "Total GPU memory allocated: "
               << total_cuda_malloc_allocated << " bytes ("
