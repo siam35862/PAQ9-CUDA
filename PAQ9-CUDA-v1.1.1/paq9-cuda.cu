@@ -1889,7 +1889,7 @@ void decompress(const char *destination_file, const char *source_file)
             // Input
             cudaMallocTracked(
                 &temp_d_input[i],
-                (chunk_B + 2) * sizeof(char));
+                (chunk_B + MB) * sizeof(char));
 
             // Output
             //
@@ -1897,7 +1897,7 @@ void decompress(const char *destination_file, const char *source_file)
             // because your kernel only copies data.
             cudaMallocTracked(
                 &temp_d_output[i],
-                (chunk_B + 2) * sizeof(char));
+                (chunk_B + MB) * sizeof(char));
         }
         // FIX: Allocate memory for the host integer array before copying
         size_t *output_size = (size_t *)malloc(num_of_thread * sizeof(size_t));
@@ -1908,9 +1908,13 @@ void decompress(const char *destination_file, const char *source_file)
         for (int i = 0; i < num_of_thread; i++)
         {
             // FIX: Allocate memory for each specific chunk array before copying
-            output[i] = new char[chunk_B + 2];
+            output[i] = new char[chunk_B + MB];
         }
         std::vector<char *> input(num_of_thread, nullptr);
+
+        unsigned char **d_encoder_buffer;
+        cudaMallocTracked(&d_encoder_buffer, num_of_thread * sizeof(unsigned char *));
+
         // output file configuration
         std::ofstream dest(destination_file, std::ios::binary);
         if (!dest)
@@ -1973,6 +1977,10 @@ void decompress(const char *destination_file, const char *source_file)
                 temp_d_output,
                 num_of_current_thread * sizeof(char *),
                 cudaMemcpyHostToDevice);
+            
+                // device encoder buffer
+
+            cudaMemcpy(d_encoder_buffer, encoder_buffer, num_of_current_thread * sizeof(unsigned char *), cudaMemcpyHostToDevice);
 
             // --------------------------------------------------
             // Launch kernel
@@ -2001,7 +2009,7 @@ void decompress(const char *destination_file, const char *source_file)
                 d_input_size,
                 d_input,
                 d_output_size,
-                d_output, encoder_buffer,
+                d_output, d_encoder_buffer,
                 num_of_current_thread, DECOMPRESS, memory_level);
 
             cudaDeviceSynchronize();
