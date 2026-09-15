@@ -1243,7 +1243,7 @@ paq9_cuda(
 
         if (input[tid][0] == '1')
         {
-            int itr = 1;
+            int itr = 0;
             itr2 = 1;
             while (itr2 < input_size[tid])
             {
@@ -1345,7 +1345,7 @@ int get_n_from_mb(double mb)
 }
 void compress(char *destination_file, char *source_file)
 {
-    std::cout<<"Working mode: Compressing\n";
+    std::cout << "Working mode: Compressing\n";
     constexpr size_t MB = 1024 * 1024;
 
     memory_chunk_level = (1 << (level - 1));
@@ -1537,7 +1537,7 @@ void compress(char *destination_file, char *source_file)
     threads = std::min(threads, (int)num_of_chunks);
     // std::cout << "Assigned threads: " << threads << std::endl;
     std::cout << "Total threads: " << blocks * threads << std::endl;
-    std::cout<<"Maximum Thread at a time: "<<blocks*threads<<std::endl;
+    std::cout << "Maximum Thread at a time: " << blocks * threads << std::endl;
     paq9_cuda<<<blocks, threads>>>(
         d_input_size,
         d_input,
@@ -1699,7 +1699,7 @@ char *get_input(std::istream &source, int size)
 void decompress(const char *destination_file, const char *source_file)
 {
 
-    std::cout<<"Working mode: Decompressing\n";
+    std::cout << "Working mode: Decompressing\n";
     constexpr size_t MB = 1024 * 1024;
 
     std::ifstream source(source_file, std::ios::binary);
@@ -1715,19 +1715,19 @@ void decompress(const char *destination_file, const char *source_file)
     }
 
     memory_level = get_number(source);
-    //std::cout << "Memory Level: " << memory_level << std::endl;
+    // std::cout << "Memory Level: " << memory_level << std::endl;
 
     std::string filename = get_file_name(source);
 
     if (destination_file == 0)
     {
 
-        //std::cout << "Uncompressed to file: " << filename << std::endl;
+        // std::cout << "Uncompressed to file: " << filename << std::endl;
         destination_file = filename.c_str();
     }
     else
     {
-        //std::cout << filename << " -> " << destination_file << std::endl;
+        // std::cout << filename << " -> " << destination_file << std::endl;
     }
 
     char mode = source.get();
@@ -1894,7 +1894,7 @@ void decompress(const char *destination_file, const char *source_file)
         threads = std::min(threads, (int)num_of_chunks);
         // std::cout << "Assigned threads: " << threads << std::endl;
         std::cout << "Total threads: " << blocks * threads << std::endl;
-        std::cout<<"Maximum Thread at a time: "<<blocks*threads<<std::endl;
+        std::cout << "Maximum Thread at a time: " << blocks * threads << std::endl;
 
         paq9_cuda<<<blocks, threads>>>(
             d_input_size,
