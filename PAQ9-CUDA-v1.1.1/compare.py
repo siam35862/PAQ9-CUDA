@@ -26,4 +26,4 @@ def compare_files(file1, file2):
         print(f"\nSize difference: {abs(len(data1) - len(data2))} bytes")
 
 
-compare_files("E:\Testing FFile\Compressed\100mb.paq9-cuda", "E:\Testing File\Deompressed\100mb")
+compare_files("mbfile", "mbfile2")
