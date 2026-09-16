@@ -2177,7 +2177,7 @@ int main(int argc, char **args)
 {
 
     auto start = std::chrono::steady_clock::now();
-    std::cout << "CUDA version of PAQ9 (warp-cooperative) started successfully.\n\n";
+    std::cout << "CUDA version of PAQ9 started successfully.\n\n";
     if (argc < 3)
     {
         print_usage(args[0]);
