@@ -1,6 +1,8 @@
+.deep-copilot/logs/session-2026-09-16T14-19-50-324Z.log
 *.exe
 *.exe
 PAQ9/paq9-cuda
 *.paq9
 PAQ9/paq9-cuda-v1.0
 PAQ9/paq9-cuda-v1.1
+PAQ9/paq9-cuda_new
