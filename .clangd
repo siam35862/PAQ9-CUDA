@@ -1,0 +1,9 @@
+CompileFlags:
+  Add: ["-std=c++23", 
+  "-I/mnt/PlayKaziRifat/Qt/6.9.1/gcc_64/include/",
+  "-I/mnt/PlayKaziRifat/Qt/6.9.1/gcc_64/include/QtCore",
+  "-I/mnt/PlayKaziRifat/Qt/6.9.1/gcc_64/include/QtNetwork",
+  "-I/home/noobcod3r-rtx/Qt/6.9.1/gcc_64/include",
+  "-I/home/noobcod3r-rtx/Qt/6.9.1/gcc_64/include/QtCore",
+  "-I/home/noobcod3r-rtx/Qt/6.9.1/gcc_64/include/QtNetwork"
+  ]
