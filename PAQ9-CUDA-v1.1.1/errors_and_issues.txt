@@ -1,0 +1,412 @@
+Welcome to fish, the friendly interactive shell
+Type help for instructions on how to use fish
+noobcod3r-rtx@noobcod3r-rtx ~/D/G/C/P/PAQ9 (main)> nvcc paq9-cuda.cu                            (base)
+paq9-cuda.cu(1494): warning #61-D: integer operation result is out of range
+     size_t heapSize = 4095 * 1024 * 1024;
+                                   ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+paq9-cuda.cu(1843): warning #61-D: integer operation result is out of range
+         size_t heapSize = 4095 * 1024 * 1024;
+                                       ^
+
+paq9-cuda.cu(623): warning #20039-D: a __host__ function("HashTable<B>::HashTable") redeclared with __device__, henc
+e treated as a __host__ __device__ function
+ __attribute__((device)) HashTable<B>::HashTable(int n) : table(0), raw_table(0), N(n)
+                                       ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+paq9-cuda.cu(633): warning #20039-D: a __host__ function("HashTable<B>::operator[]") redeclared with __device__, hen
+ce treated as a __host__ __device__ function
+ __attribute__((device)) U8 *HashTable<B>::operator[](U32 i)
+                                           ^
+
+paq9-cuda.cu(657): warning #20039-D: a __host__ function("HashTable<B>::~HashTable") redeclared with __device__, hen
+ce treated as a __host__ __device__ function
+ __attribute__((device)) HashTable<B>::~HashTable()
+                                       ^
+
+paq9-cuda.cu(1494): warning #61-D: integer operation result is out of range
+     size_t heapSize = 4095 * 1024 * 1024;
+                                   ^
+
+paq9-cuda.cu(1843): warning #61-D: integer operation result is out of range
+         size_t heapSize = 4095 * 1024 * 1024;
+                                       ^
+
+paq9-cuda.cu(39): warning #181-D: argument is incompatible with corresponding format string conversion (expected typ
+e "int" but argument has type "unsigned long")
+             printf("Error: Out of memory (failed to allocate %d elements)\n", allocate_size * sizeof(T));
+                                                                               ^
+
+paq9-cuda.cu: In function ‘void compress(char*, char*)’:
+paq9-cuda.cu:1494:33: warning: integer overflow in expression of type ‘int’ results in ‘-1048576’ [-Woverflow]
+1494 |     size_t heapSize = 4095 * 1024 * 1024; // 512 MB
+     |                   ~~~~~~~~~~~~~~^~~~~~
+paq9-cuda.cu: In function ‘void decompress(const char*, const char*)’:
+paq9-cuda.cu:1843:33: warning: integer overflow in expression of type ‘int’ results in ‘-1048576’ [-Woverflow]
+1843 |         size_t heapSize = 4095 * 1024 * 1024; // 512 MB
+     |                   ~~~~~~~~~~~~~~^~~~~~
+
+
+
+
+
+noobcod3r-rtx@noobcod3r-rtx ~/D/G/C/P/PAQ9 (main)> ls                                           (base)
+a.out*  compare.py  paq9-cuda.cu
+noobcod3r-rtx@noobcod3r-rtx ~/D/G/C/P/PAQ9 (main)>
+
+
+
+
+
+noobcod3r-rtx@noobcod3r-rtx ~/D/G/C/P/PAQ9 (main)> time ./paq9-cuda -c arcv.paq9 -4 "/home/noobcod3r-rtx/Documents/GitHub/CUDA-thesis-study/enwik9.txt"
+CUDA version of PAQ9 started successfully.
+
+Memory Chunk Size: 16MB
+ Memory Level 1
+ Level: 5
+Number of Chunks: 60
+Total Size: 953.674 MB
+Chunk Size: 16 MB
+Launch error: too many resources requested for launch
+Assigned block: 1
+Assigned threads: 60
+Total threads: 60
+Launch error paq9: too many resources requested for launch
+Uncompressed  ->  Compressed
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+10144256 Byte -> 0 Byte
+Total: 1000000000 Byte -> 0 Byte
+Compression Ratio: inf
+Time Taken: 2.35688 seconds
+Compression/Decompression Speed: 414345 KB/seconds
+
+________________________________________________________
+Executed in    2.58 secs    fish           external
+   usr time    0.18 secs    0.00 millis    0.18 secs
+   sys time    2.09 secs    1.14 millis    2.08 secs
+
+noobcod3r-rtx@noobcod3r-rtx ~/D/G/C/P/PAQ9 (main)> time ./paq9-cuda -c arcv.paq9 -1 "/home/noobcod3r-rtx/Documents/GitHub/CUDA-thesis-study/enwik9.txt"
+CUDA version of PAQ9 started successfully.
+
+Memory Chunk Size: 16MB
+ Memory Level 1
+ Level: 5
+Number of Chunks: 60
+Total Size: 953.674 MB
+Chunk Size: 16 MB
+Launch error: too many resources requested for launch
+Assigned block: 1
+Assigned threads: 60
+Total threads: 60
+Launch error paq9: too many resources requested for launch
+Uncompressed  ->  Compressed
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+16777216 Byte -> 0 Byte
+10144256 Byte -> 0 Byte
+Total: 1000000000 Byte -> 0 Byte
+Compression Ratio: inf
+Time Taken: 1.82444 seconds
+Compression/Decompression Speed: 535267 KB/seconds
+
+________________________________________________________
+Executed in    2.02 secs    fish           external
+   usr time    0.17 secs  833.00 micros    0.17 secs
+   sys time    1.75 secs  280.00 micros    1.75 secs
+
+noobcod3r-rtx@noobcod3r-rtx ~/D/G/C/P/PAQ9 (main)> la                                 (base)
+total 1.5M
+-rw-r--r-- 1 noobcod3r-rtx noobcod3r-rtx  571 Sep 12 10:37 arcv.paq9
+-rw-r--r-- 1 noobcod3r-rtx noobcod3r-rtx  781 Sep 12 10:29 compare.py
+-rw-r--r-- 1 noobcod3r-rtx noobcod3r-rtx 2.1K Sep 12 10:33 instructions.txt
+-rwxr-xr-x 1 noobcod3r-rtx noobcod3r-rtx 1.5M Sep 12 10:33 paq9-cuda*
+-rw-r--r-- 1 noobcod3r-rtx noobcod3r-rtx  58K Sep 12 10:29 paq9-cuda.cu
+noobcod3r-rtx@noobcod3r-rtx ~/D/G/C/P/PAQ9 (main)>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+--------------------------------------------------
+
+3.03 PM - 12/09/2026
+
+
+
+noobcod3r-rtx@noobcod3r-rtx ~/D/G/C/P/PAQ9 (main)> time ./paq9-cuda -c shams.paq9 -1 "/home/noobcod3r-rtx/Downloads/Telegram Desktop/shams.jpg"                                                            (base)
+CUDA version of PAQ9 started successfully.
+
+Memory Chunk Size: 1MB
+ Memory Level 1
+ Level: 1
+Number of Chunks: 2
+Total Size: 1.02647 MB
+Chunk Size: 1 MB
+Launch error: too many resources requested for launch
+Assigned block: 1
+Assigned threads: 2
+Total threads: 2
+Launch error paq9: too many resources requested for launch
+Uncompressed  ->  Compressed
+1048576 Byte -> 0 Byte
+27759 Byte -> 0 Byte
+Total: 1076335 Byte -> 0 Byte
+Compression Ratio: inf
+Time Taken: 0.369557 seconds
+Compression/Decompression Speed: 2844.24 KB/seconds
+
+________________________________________________________
+Executed in  457.18 millis    fish           external
+   usr time   13.74 millis    0.00 micros   13.74 millis
+   sys time  429.80 millis  983.00 micros  428.82 millis
+
+noobcod3r-rtx@noobcod3r-rtx ~/D/G/C/P/PAQ9 (main)> time ./paq9-cuda -c enwik8.paq9 -1 "/home/noobcod3r-rtx/Downloads/enwik8"                                                                               (base)
+CUDA version of PAQ9 started successfully.
+
+Memory Chunk Size: 1MB
+ Memory Level 1
+ Level: 1
+Number of Chunks: 96
+Total Size: 95.3674 MB
+Chunk Size: 1 MB
+Launch error: too many resources requested for launch
+Assigned block: 1
+Assigned threads: 96
+Total threads: 96
+Launch error paq9: too many resources requested for launch
+Uncompressed  ->  Compressed
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+1048576 Byte -> 0 Byte
+385280 Byte -> 0 Byte
+Total: 100000000 Byte -> 0 Byte
+Compression Ratio: inf
+Time Taken: 0.28719 seconds
+Compression/Decompression Speed: 340041 KB/seconds
+
+________________________________________________________
+Executed in  449.75 millis    fish           external
+   usr time   17.95 millis    0.00 micros   17.95 millis
+   sys time  360.83 millis  706.00 micros  360.12 millis
+
+noobcod3r-rtx@noobcod3r-rtx ~/D/G/C/P/PAQ9 (main)>
