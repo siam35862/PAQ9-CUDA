@@ -790,8 +790,14 @@ public:
             x1 <<= 8;
             x2 = (x2 << 8) + 255;
             if (mode == DECOMPRESS)
-                x = (x << 8) + (inout[iterator_size++] & 255);
-            ;
+            {
+                if (iterator_size >= total_size)
+                {
+                    printf("%d thread failed to code: %lld >= %lld\n", get_tid(), iterator_size, total_size);
+                    return 1;
+                }
+                x = (x << 8) + (unsigned char)(inout[iterator_size++]);
+            };
         }
         return y;
     }
@@ -812,11 +818,13 @@ __device__ Encoder::Encoder(int m, char *temp, unsigned char *buffer_ptr, size_t
                                                                                                     usize(0), csize(0), usum(0), csum(0)
 {
     int tid = get_tid();
+
     if (mode == DECOMPRESS)
     { // x = first 4 bytes of archive
         for (int i = 0; i < 4; ++i)
-            x = (x << 8) + (inout[iterator_size++] & 255);
+            x = (x << 8) + (unsigned char)(inout[iterator_size++]);
         csize = 4;
+        printf("%d = %lu %lu %lu\n", tid, x, x1, x2);
     }
     // else if (!buf)
     //     allocator[tid]->alloc(buf, BUFSIZE);
@@ -956,7 +964,7 @@ paq9_cuda(
     }
     else
     {
-        int itr2 = 0;
+        size_t itr2 = 0;
         // decompress
 
         if (input[tid][0] == '1')
@@ -971,15 +979,22 @@ paq9_cuda(
         }
         else
         {
-            size_t usize;
+
             itr2 = 0;
             size_t itr = 1;
             while (itr2 < output_size[tid])
             {
-                usize = get4(itr, input[tid]);
-                get4(itr, input[tid]); // csize
+                size_t usize = get4(itr, input[tid]);
+                size_t csize = get4(itr, input[tid]); // csize
+                // printf("usize %llu , csize: %llu\n",usize,csize);
                 Encoder encoder(mode, input[tid], buffer[tid], input_size[tid], itr);
 
+                itr += csize;
+                // itr2 += usize;
+                if (itr > input_size[tid])
+                {
+                    printf("Thread %d more  geche , %llu > %llu \n", tid, itr, input_size[tid]);
+                }
                 while (usize--)
                 {
 
@@ -994,13 +1009,13 @@ paq9_cuda(
                     output[tid][itr2++] = cp;
                     lzp[tid]->update(cp);
                 }
-                itr = encoder.iterator_size;
             }
             if (output_size[tid] < itr2)
             {
                 printf("%d thread failed to decode ", tid);
                 return;
             }
+            printf("Thread %d , %lld -> %lld, %lld -> %lld \n", tid, input_size[tid], output_size[tid], itr, itr2);
         }
     }
 
@@ -1010,10 +1025,10 @@ paq9_cuda(
     // deleting predictor[tid] and lzp[tid] cascades: their member objects
     // (StateMap, Mix, APM, HashTable) each free their own internal arrays
     // via the destructors added above.
-    delete predictor[tid];
-    delete lzp[tid];
-    predictor[tid] = 0;
-    lzp[tid] = 0;
+    // delete predictor[tid];
+    // delete lzp[tid];
+    // predictor[tid] = 0;
+    // lzp[tid] = 0;
 }
 void put4(U32 c, int &iterator_size, char *inout)
 {
@@ -1123,7 +1138,7 @@ __global__ void init(int thread_count, ThreadBuffers *buffers, int memory_level)
             predictor_statemap[j] = new StateMap(buffer.predictor_statemap[j], 0x100);
         Mix *predictor_mix[10];
         for (int j = 0; j < 10; j++)
-            predictor_mix[j] = new Mix(buffer.predictor_mix[j], 0x400);
+            predictor_mix[j] = new Mix(buffer.predictor_mix[j], 0x200);
         APM *predictor_apm1 = new APM(buffer.predictor_apm[0], 0x10000);
         APM *predictor_apm2 = new APM(buffer.predictor_apm[1], 0x10000);
         APM *predictor_apm3 = new APM(buffer.predictor_apm[2], 0x10000);
@@ -1199,7 +1214,7 @@ void memoryAllocationForThread(int thread_count)
             cudaMallocTracked(&buffers[i].predictor_statemap[j], 0x100 * sizeof(U32));
 
         for (int j = 0; j < 10; j++)
-            cudaMallocTracked(&buffers[i].predictor_mix[j], 0x800 * sizeof(int));
+            cudaMallocTracked(&buffers[i].predictor_mix[j], 0x400 * sizeof(int));
 
         cudaMallocTracked(&buffers[i].predictor_apm[0], 0x20000 * sizeof(int));
         cudaMallocTracked(&buffers[i].predictor_apm[1], 0x20000 * sizeof(int));
@@ -1932,7 +1947,7 @@ void decompress(const char *destination_file, const char *source_file)
             exit(1);
         }
         auto start_time = std::chrono::high_resolution_clock::now();
-        int expected=0;
+        int expected = 0;
         for (int call_count = 0; call_count < device_call_count; call_count++)
         {
             // std::cout << "\n\nDevice Call No: " << call_count + 1 << endl;
@@ -1947,7 +1962,7 @@ void decompress(const char *destination_file, const char *source_file)
                 uncompressed_size[i] = get4_stream(source);
                 input_size[i] = get4_stream(source);
                 input[i] = get_input(source, input_size[i]);
-                expected+=uncompressed_size[i];
+                expected += uncompressed_size[i];
             }
 
             // preparing for calling device function
@@ -2020,6 +2035,7 @@ void decompress(const char *destination_file, const char *source_file)
                 d_output_size,
                 d_output, d_encoder_buffer,
                 num_of_current_thread, DECOMPRESS, memory_level);
+            cudaDeviceSynchronize();
             freeDeviceObjects<<<blocks, threads>>>(num_of_current_thread);
 
             cudaDeviceSynchronize();
@@ -2070,11 +2086,12 @@ void decompress(const char *destination_file, const char *source_file)
                 dest.write(output[i], output_size[i]);
                 total_input += input_size[i];
                 total_output += output_size[i];
-                // std::cout << input_size[i] << " Byte -> " << output_size[i] << " Byte" << endl;
+                // std::cout << "Thread: " << i + 1 << " " << input_size[i] << " Byte -> " << output_size[i] << " Byte" << endl;
             }
             // std::cout << "From Device Call: " << total_input << " Byte -> " << total_output << " Byte" << endl;
             total_compressed_size += total_input;
             total_uncompressed_size += total_output;
+            break;
         }
 
         for (size_t i = 0; i < input.size(); ++i)
@@ -2095,7 +2112,7 @@ void decompress(const char *destination_file, const char *source_file)
         std::cout << "Compressed  ->  Decompressed \n";
         std::cout << "Total: " << total_compressed_size << " Byte -> "
                   << total_uncompressed_size << " Byte" << endl;
-        std::cout<<"Expected: "<<expected<<"Bytes\n";
+        std::cout << "Expected: " << expected << "Bytes\n";
         // --------------------------------------------------
         // Free DEVICE chunk memory
         // --------------------------------------------------
@@ -2120,6 +2137,7 @@ void decompress(const char *destination_file, const char *source_file)
         delete[] temp_d_output;
 
         memoryDeallocationForThread(num_of_thread);
+        std::cout << "Success\n";
     }
     else
     {
