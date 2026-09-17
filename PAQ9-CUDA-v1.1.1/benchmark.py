@@ -1,32 +1,48 @@
-"""Run PAQ9-CUDA compression/decompression benchmarks and write a CSV report."""
+"""Run PAQ9-CUDA (warp-cooperative) compression/decompression benchmarks and write a CSV report."""
 
 # PAQ9-CUDA benchmark documentation
 #
-# This script runs 22 operations in total:
-#   1. Compress the original file with levels -1 through -11.
-#   2. Decompress the archive immediately after each compression.
-#   3. Compare the original file with the decompressed file.
-#   4. Print every result in the terminal and save every result to one CSV file.
+# The executable now takes two independent tuning parameters, each from 1 to 11:
+#   memory_level  Controls how much GPU memory (VRAM) is used (passed after -c).
+#   chunk_level   Controls compression ratio vs. speed (passed as the second flag).
+#
+# This script runs every combination of memory_level (1-11) and chunk_level (1-11)
+# in a nested sweep -- 121 combinations in total. For each combination it:
+#   1. Compresses the original file with that memory_level and chunk_level.
+#   2. Decompresses the archive immediately after that compression.
+#   3. Compares the original file with the decompressed file.
+#   4. Prints every result in the terminal and saves every result to one CSV file.
+#
+# That is 121 compressions + 121 decompressions = 242 operations in total.
 #
 # Required command-line parameters, in this order:
-#   UNCOMPRESSED_FILE  Path to the original input file.
-#   COMPRESSED_FILE    Path to the archive created by PAQ9-CUDA.
-#   DECOMPRESSED_FILE  Path to the output file created during decompression.
-#   CSV_FILE           Path where the benchmark report will be written.
+#   CUDA_EXECUTABLE          Path (or file name) of the paq9_cuda_warp executable.
+#   UNCOMPRESSED_FILE        Path to the original input file.
+#   COMPRESSED_FILE          Path to the archive created during each compression.
+#   DECOMPRESS_SOURCE_FILE   The compressed file read as the source for each
+#                            decompression (normally the same path as
+#                            COMPRESSED_FILE, but kept as its own argument in
+#                            case the two need to differ).
+#   DECOMPRESSED_FILE        Path to the output file created during decompression.
+#   CSV_FILE                 Path where the benchmark report will be written.
 #
 # Example on Windows PowerShell:
 #   python benchmark.py `
+#     "E:\Tools\paq9_cuda_warp.exe" `
 #     "E:\Testing FIle\enwik9" `
+#     "E:\Testing FIle\Compressed\enwik9.paq9-cuda" `
 #     "E:\Testing FIle\Compressed\enwik9.paq9-cuda" `
 #     "E:\Testing FIle\Decompressed\enwik9" `
 #     "E:\Testing FIle\Benchmark.csv"
 #
-# The optional --executable parameter can specify a different paq9-cuda.exe.
-# If it is omitted, paq9-cuda.exe is expected beside this Python script.
-#
 # Terminal output includes live run progress, PAQ9-CUDA metrics, file comparison
 # results, return codes, and the final CSV output path. The comparison reads
 # both files in 1 MiB chunks so large files do not need to fit in memory.
+#
+# The CSV file is opened, appended to with one new row, and closed again after
+# every single compression or decompression -- not just once at the end and not
+# only after each combination pair. This keeps the CSV on disk always current
+# and readable, even if the benchmark is interrupted mid-run.
 
 import argparse
 import csv
@@ -38,10 +54,11 @@ import time
 from pathlib import Path
 
 
-DEFAULT_EXECUTABLE = Path(__file__).with_name("paq9-cuda.exe")
+MIN_LEVEL = 1
+MAX_LEVEL = 11
 
 
-# Add a useful explanation when the script is started without the four file paths.
+# Add a useful explanation when the script is started without the five file paths.
 class BenchmarkArgumentParser(argparse.ArgumentParser):
     """Add path explanations when required benchmark arguments are missing."""
 
@@ -49,12 +66,17 @@ class BenchmarkArgumentParser(argparse.ArgumentParser):
         if "the following arguments are required" in message:
             message += (
                 "\n\nRequired filepath parameters:\n"
+                "  cuda          Path (or file name) of the paq9_cuda_warp executable.\n"
                 "  source        Original uncompressed input file.\n"
-                "  archive       Compressed archive file to create and decompress.\n"
+                "  archive       Compressed archive file to create.\n"
+                "  decompress_source  The compressed file that will be read as the\n"
+                "                     source for each decompression.\n"
                 "  decompressed  Output file created by each decompression.\n"
                 "  csv           CSV report file to generate.\n\n"
                 "Example:\n"
-                '  python benchmark.py "E:\\Testing FIle\\enwik9" '
+                '  python benchmark.py "E:\\Tools\\paq9_cuda_warp.exe" '
+                '"E:\\Testing FIle\\enwik9" '
+                '"E:\\Testing FIle\\Compressed\\enwik9.paq9-cuda" '
                 '"E:\\Testing FIle\\Compressed\\enwik9.paq9-cuda" '
                 '"E:\\Testing FIle\\Decompressed\\enwik9" '
                 '"E:\\Testing FIle\\Benchmark.csv"'
@@ -66,7 +88,8 @@ CSV_FIELDS = [
     # These names become the column headings in the final Benchmark.csv file.
     "run",
     "operation",
-    "requested_level",
+    "requested_memory_level",
+    "requested_chunk_level",
     "working_mode",
     "memory_chunk_level_mb",
     "memory_level",
@@ -98,7 +121,7 @@ def number(pattern: str, output: str, flags: int = 0) -> str:
 
 
 def parse_output(output: str) -> dict[str, str]:
-    """Parse the labelled values printed by paq9-cuda."""
+    """Parse the labelled values printed by paq9_cuda_warp."""
     # The executable prints these values as human-readable terminal messages.
     total = re.search(
         r"Total:\s*([0-9]+)\s+Byte\s*->\s*([0-9]+)\s+Byte", output
@@ -146,7 +169,7 @@ def parse_output(output: str) -> dict[str, str]:
 def compare_files(source: Path, decompressed: Path) -> tuple[str, str, str]:
     """Compare two files in chunks and return match, status, and error text."""
     try:
-    # Check the size first, then compare 1 MiB at a time to avoid loading a large file into RAM.
+        # Check the size first, then compare 1 MiB at a time to avoid loading a large file into RAM.
         if source.stat().st_size != decompressed.stat().st_size:
             return "no", "different_size", ""
 
@@ -226,11 +249,29 @@ def run_command(
     return "".join(output_lines), return_code
 
 
-def print_run_result(row: dict[str, str], benchmark_started: float) -> None:
+def append_row_to_csv(row: dict[str, str], csv_path: Path) -> None:
+    """Open the CSV file, append one row, and close it immediately.
+
+    Writes the header first if the file does not exist yet. Opening and
+    closing the file around every single row (rather than keeping it open
+    for the whole benchmark) means the CSV on disk is always complete and
+    readable up to the last finished operation, even if the run is
+    interrupted or crashes partway through.
+    """
+    file_is_new = not csv_path.exists()
+    with csv_path.open("a", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=CSV_FIELDS)
+        if file_is_new:
+            writer.writeheader()
+        writer.writerow(row)
+
+
+def print_run_result(row: dict[str, str], total_runs: int, benchmark_started: float) -> None:
     """Print the parsed result immediately after one operation finishes."""
     result_fields = [
         "operation",
-        "requested_level",
+        "requested_memory_level",
+        "requested_chunk_level",
         "working_mode",
         "memory_chunk_level_mb",
         "memory_level",
@@ -253,7 +294,7 @@ def print_run_result(row: dict[str, str], benchmark_started: float) -> None:
         "comparison_status",
         "comparison_error",
     ]
-    print_timed_line(f"[result] run {row['run']}/{22}", benchmark_started)
+    print_timed_line(f"[result] run {row['run']}/{total_runs}", benchmark_started)
     for field in result_fields:
         value = row.get(field, "")
         if value != "":
@@ -261,104 +302,121 @@ def print_run_result(row: dict[str, str], benchmark_started: float) -> None:
 
 
 def benchmark(args: argparse.Namespace) -> None:
-    # Create the CSV folder if it does not exist, then run 11 compression/decompression pairs.
+    # Create the CSV folder if it does not exist. Start from a fresh CSV file so
+    # a leftover file from an earlier run doesn't get appended to.
     benchmark_started = time.monotonic()
     args.csv.parent.mkdir(parents=True, exist_ok=True)
-    rows = []
+    if args.csv.exists():
+        args.csv.unlink()
     run_number = 0
-    total_runs = 22
+    levels = range(MIN_LEVEL, MAX_LEVEL + 1)
+    total_combinations = len(levels) * len(levels)
+    total_runs = total_combinations * 2  # one compression + one decompression each
 
-    for level in range(1, 12):
-        run_number += 1
-        print_timed_line(
-            f"\n[progress] starting run {run_number}/{total_runs}: compression -{level}",
-            benchmark_started,
-        )
-        compression_command = [
-            str(args.executable),
-            "-c",
-            str(args.archive),
-            f"-{level}",
-            str(args.source),
-        ]
-        compression_output, compression_code = run_command(
-            compression_command, run_number, total_runs, benchmark_started
-        )
-        compression_row = {field: "" for field in CSV_FIELDS}
-        compression_row.update(parse_output(compression_output))
-        compression_row.update(
-            {
-                "run": run_number,
-                "operation": "compression",
-                "requested_level": level,
-                "return_code": compression_code,
-                "status": "ok" if compression_code == 0 else "failed",
-            }
-        )
-        print_run_result(compression_row, benchmark_started)
-        rows.append(compression_row)
-
-        # Decompress immediately after this level before starting the next compression level.
-        run_number += 1
-        print_timed_line(
-            f"\n[progress] starting run {run_number}/{total_runs}: decompression after -{level}",
-            benchmark_started,
-        )
-        decompression_command = [
-            str(args.executable),
-            "-d",
-            str(args.archive),
-            str(args.decompressed),
-        ]
-        decompression_output, decompression_code = run_command(
-            decompression_command, run_number, total_runs, benchmark_started
-        )
-        decompression_row = {field: "" for field in CSV_FIELDS}
-        decompression_row.update(parse_output(decompression_output))
-        decompression_row.update(
-            {
-                "run": run_number,
-                "operation": "decompression",
-                "requested_level": level,
-                "return_code": decompression_code,
-                "status": "ok" if decompression_code == 0 else "failed",
-            }
-        )
-        if decompression_code == 0:
-            # Verify that decompression restored the original input exactly.
-            files_match, comparison_status, comparison_error = compare_files(
-                args.source, args.decompressed
+    for memory_level in levels:
+        for chunk_level in levels:
+            # --- Compression: -c -<memory_level> <archive> -<chunk_level> <source> ---
+            run_number += 1
+            print_timed_line(
+                f"\n[progress] starting run {run_number}/{total_runs}: "
+                f"compression memory_level={memory_level} chunk_level={chunk_level}",
+                benchmark_started,
             )
-            decompression_row.update(
+            compression_command = [
+                str(args.cuda),
+                "-c",
+                f"-{memory_level}",
+                str(args.archive),
+                f"-{chunk_level}",
+                str(args.source),
+            ]
+            compression_output, compression_code = run_command(
+                compression_command, run_number, total_runs, benchmark_started
+            )
+            compression_row = {field: "" for field in CSV_FIELDS}
+            compression_row.update(parse_output(compression_output))
+            compression_row.update(
                 {
-                    "files_match": files_match,
-                    "comparison_status": comparison_status,
-                    "comparison_error": comparison_error,
+                    "run": run_number,
+                    "operation": "compression",
+                    "requested_memory_level": memory_level,
+                    "requested_chunk_level": chunk_level,
+                    "return_code": compression_code,
+                    "status": "ok" if compression_code == 0 else "failed",
                 }
             )
-        else:
-            decompression_row["comparison_status"] = "skipped_decompression_failed"
-        print_run_result(decompression_row, benchmark_started)
-        rows.append(decompression_row)
+            print_run_result(compression_row, total_runs, benchmark_started)
+            # Open the CSV, append this compression's row, and close it right away
+            # so the file on disk is up to date after every single operation.
+            append_row_to_csv(compression_row, args.csv)
 
-    with args.csv.open("w", newline="", encoding="utf-8") as csv_file:
-        # Write all 22 operation results after the complete benchmark finishes.
-        writer = csv.DictWriter(csv_file, fieldnames=CSV_FIELDS)
-        writer.writeheader()
-        writer.writerows(rows)
+            # --- Decompression: -d <archive> <decompressed> ---
+            run_number += 1
+            print_timed_line(
+                f"\n[progress] starting run {run_number}/{total_runs}: "
+                f"decompression after memory_level={memory_level} chunk_level={chunk_level}",
+                benchmark_started,
+            )
+            decompression_command = [
+                str(args.cuda),
+                "-d",
+                str(args.decompress_source),
+                str(args.decompressed),
+            ]
+            decompression_output, decompression_code = run_command(
+                decompression_command, run_number, total_runs, benchmark_started
+            )
+            decompression_row = {field: "" for field in CSV_FIELDS}
+            decompression_row.update(parse_output(decompression_output))
+            decompression_row.update(
+                {
+                    "run": run_number,
+                    "operation": "decompression",
+                    "requested_memory_level": memory_level,
+                    "requested_chunk_level": chunk_level,
+                    "return_code": decompression_code,
+                    "status": "ok" if decompression_code == 0 else "failed",
+                }
+            )
+            if decompression_code == 0:
+                # Verify that decompression restored the original input exactly.
+                files_match, comparison_status, comparison_error = compare_files(
+                    args.source, args.decompressed
+                )
+                decompression_row.update(
+                    {
+                        "files_match": files_match,
+                        "comparison_status": comparison_status,
+                        "comparison_error": comparison_error,
+                    }
+                )
+            else:
+                decompression_row["comparison_status"] = "skipped_decompression_failed"
+            print_run_result(decompression_row, total_runs, benchmark_started)
+            # Open the CSV, append this decompression's row, and close it right away.
+            append_row_to_csv(decompression_row, args.csv)
+
     print_timed_line(f"\nBenchmark complete. CSV written to: {args.csv}", benchmark_started)
 
 
 def parse_args() -> argparse.Namespace:
     parser = BenchmarkArgumentParser(
         description=(
-            "Run PAQ9-CUDA levels 1 through 11, compare every decompression, "
+            "Run PAQ9-CUDA (warp-cooperative) for every memory_level (1-11) x "
+            "chunk_level (1-11) combination, compare every decompression, "
             "and create a CSV report."
         ),
         epilog=(
-            "The four filepath arguments are, in order: original uncompressed file, "
-            "compressed archive, decompressed output file, and CSV report file."
+            "The six filepath arguments are, in order: the paq9_cuda_warp executable, "
+            "original uncompressed file, compressed archive to create, the compressed "
+            "file to read as the decompression source, decompressed output file, and "
+            "CSV report file. This runs 121 memory_level/chunk_level combinations "
+            "(242 operations total)."
         ),
+    )
+    parser.add_argument(
+        "cuda", metavar="CUDA_EXECUTABLE", type=Path,
+        help="path (or file name) of the paq9_cuda_warp executable",
     )
     parser.add_argument(
         "source", metavar="UNCOMPRESSED_FILE", type=Path,
@@ -366,7 +424,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "archive", metavar="COMPRESSED_FILE", type=Path,
-        help="compressed archive file to create and decompress",
+        help="compressed archive file to create during each compression",
+    )
+    parser.add_argument(
+        "decompress_source", metavar="DECOMPRESS_SOURCE_FILE", type=Path,
+        help=(
+            "compressed file read as the source for each decompression "
+            "(normally the same path as COMPRESSED_FILE)"
+        ),
     )
     parser.add_argument(
         "decompressed", metavar="DECOMPRESSED_FILE", type=Path,
@@ -375,12 +440,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "csv", metavar="CSV_FILE", type=Path,
         help="CSV report file to generate",
-    )
-    parser.add_argument(
-        "--executable",
-        type=Path,
-        default=DEFAULT_EXECUTABLE,
-        help="Path to paq9-cuda.exe (defaults to the executable beside this script)",
     )
     return parser.parse_args()
 
