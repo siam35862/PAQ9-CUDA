@@ -3,45 +3,62 @@ PAQ9 Compilation Instructions: paq9-cpu.cpp and paq9-cuda.cu
 ================================================================================
 
 This document provides instructions for compiling `paq9-cpu.cpp` and
-`paq9-cuda.cu` using GCC and Clang, with explanations regarding C23 vs C++23.
+`paq9-cuda.cu` using GCC and Clang, with explanations regarding C20/C23 vs
+C++20/C++23 standards.
 
 --------------------------------------------------------------------------------
-Important Note: C23 vs C++23
+Important Note: C20 / C23 vs C++20 / C++23
 --------------------------------------------------------------------------------
 - Both `paq9-cpu.cpp` and `paq9-cuda.cu` are written in C++ (utilizing C++
   features such as classes, templates, STL containers, streams, and threads).
-- "C23" (-std=c23) is the ISO C language standard (ISO/IEC 9899:2024). C23 flags
-  are intended strictly for pure C compilers. Supplying `-std=c23` to a C++
-  compiler causes errors (e.g., Clang: "error: invalid argument '-std=c23' not
-  allowed with 'C++'") or compiler warnings (e.g., GCC: "option '-std=c23' is
-  valid for C/ObjC but not for C++").
-- "C++23" (-std=c++23 or -std=c++2b) is the ISO C++ standard (ISO/IEC 14882:2023).
-  This is the correct standard flag for both codebases.
+- "C20": There is no official ISO "C20" standard (the ISO C standards progression
+  jumped from C17/C18 directly to C23). Passing `-std=c20` is unrecognized by
+  compilers.
+- "C23" (-std=c23): The ISO C language standard (ISO/IEC 9899:2024) for pure C
+  compilers. Supplying `-std=c23` to a C++ compiler causes errors (e.g. Clang:
+  "error: invalid argument '-std=c23' not allowed with 'C++'") or compiler
+  warnings in GCC ("option '-std=c23' is valid for C/ObjC but not for C++").
+- "C++20" (-std=c++20 or -std=c++2a): The ISO C++20 standard (ISO/IEC 14882:2020).
+  **Recommended standard** for both codebases. It provides maximum cross-compiler
+  compatibility and avoids header incompatibilities found in bleeding-edge
+  toolchains.
+- "C++23" (-std=c++23 or -std=c++2b): The ISO C++23 standard (ISO/IEC 14882:2023).
+  Supported by both codebases. On bleeding-edge host toolchains (such as GCC 16),
+  NVCC's EDG frontend rejects GCC 16's C++23 `std::string::substr` rvalue
+  ref-qualifier overloads. Using `-std=c++20` completely eliminates this issue.
 
-================================================================================
+===============================================================================
 1. Compiling paq9-cpu.cpp (CPU Multithreaded Version)
 ================================================================================
 
 `paq9-cpu.cpp` is pure C++ using standard library threads (`std::thread`).
 
---- A. Using GCC (g++ / gcc) with C++23 ---
+--- A. Using GCC (g++ / gcc) ---
 
-Recommended (using g++):
+Recommended (using C++20):
+    g++ -O3 -std=c++20 -pthread paq9-cpu.cpp -o paq9cpu
+
+Alternative (using C++23):
     g++ -O3 -std=c++23 -pthread paq9-cpu.cpp -o paq9cpu
 
 If using the gcc driver directly (requires explicit C++ runtime linking):
+    gcc -O3 -std=c++20 -pthread paq9-cpu.cpp -lstdc++ -lm -o paq9cpu
     gcc -O3 -std=c++23 -pthread paq9-cpu.cpp -lstdc++ -lm -o paq9cpu
 
---- B. Using Clang (clang++ / clang) with C++23 ---
+--- B. Using Clang (clang++ / clang) ---
 
-Recommended (using clang++):
+Recommended (using C++20):
+    clang++ -O3 -std=c++20 -pthread paq9-cpu.cpp -o paq9cpu
+
+Alternative (using C++23):
     clang++ -O3 -std=c++23 -pthread paq9-cpu.cpp -o paq9cpu
 
 If using the clang driver directly (requires explicit C++ runtime linking):
+    clang -O3 -std=c++20 -pthread paq9-cpu.cpp -lstdc++ -lm -o paq9cpu
     clang -O3 -std=c++23 -pthread paq9-cpu.cpp -lstdc++ -lm -o paq9cpu
 
 Optional: Suppress shift precedence warnings on Clang:
-    clang++ -O3 -std=c++23 -pthread -Wno-shift-op-parentheses paq9-cpu.cpp -o paq9cpu
+    clang++ -O3 -std=c++20 -pthread -Wno-shift-op-parentheses paq9-cpu.cpp -o paq9cpu
 
 ================================================================================
 2. Compiling paq9-cuda.cu (CUDA GPU Version)
@@ -51,31 +68,48 @@ Optional: Suppress shift precedence warnings on Clang:
 or Clang's CUDA frontend to compile GPU kernels. NVCC delegates host C++ code
 compilation to a host compiler (GCC or Clang).
 
---- A. Using NVCC with GCC Host Compiler (C++23) ---
+--- A. Using NVCC with GCC Host Compiler ---
 
-Default host compiler (GCC):
+Recommended (using C++20 — avoids GCC 16 libstdc++ C++23 header conflicts):
+    nvcc -O3 -std=c++20 -arch=native paq9-cuda.cu -o paq9cuda
+
+Explicitly specifying host compiler with C++20:
+    nvcc -O3 -std=c++20 -ccbin g++ -arch=native paq9-cuda.cu -o paq9cuda
+
+If using C++23 with default NVCC host compiler detection:
     nvcc -O3 -std=c++23 -arch=native paq9-cuda.cu -o paq9cuda
 
-Explicitly specifying GCC (`g++`):
-    nvcc -O3 -std=c++23 -ccbin g++ -arch=native paq9-cuda.cu -o paq9cuda
-
-Note on GCC compatibility:
-    If your system has a very new GCC version (e.g., GCC 16) that is newer than
-    what your CUDA Toolkit supports, point `-ccbin` to a supported GCC version
-    (such as `g++-15` or `g++-14`):
+Explicitly targeting GCC 15 for C++23 (if default g++ is GCC 16):
     nvcc -O3 -std=c++23 -ccbin g++-15 -arch=native paq9-cuda.cu -o paq9cuda
 
---- B. Using NVCC with Clang Host Compiler (C++23) ---
+Note on GCC 16 and C++23:
+    GCC 16's libstdc++ introduces C++23 rvalue ref-qualified overloads for
+    std::string::substr that NVCC's EDG parser rejects:
+        "error: overloading two member functions with the same parameter types
+        requires that they both have ref-qualifiers or both lack ref-qualifiers"
+    To resolve this:
+    - Use `-std=c++20` instead of `-std=c++23` (Recommended), OR
+    - Use `-ccbin g++-15` (or omit `-ccbin` so NVCC selects g++-15 automatically).
 
-NVCC can use `clang++` as the host compiler:
-    nvcc -O3 -std=c++23 -ccbin clang++ -arch=native paq9-cuda.cu -o paq9cuda
+--- B. Using NVCC with Clang Host Compiler ---
 
-If Clang defaults to an unsupported GCC libstdc++ header version on your system:
+Recommended (using Clang++ with C++20):
+    nvcc -O3 -std=c++20 -ccbin clang++ -arch=native paq9-cuda.cu -o paq9cuda
+
+Using Clang++ with C++23 (pointing to GCC 15 headers to bypass GCC 16 libstdc++):
     nvcc -O3 -std=c++23 -ccbin clang++ -Xcompiler "--gcc-install-dir=/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0" -arch=native paq9-cuda.cu -o paq9cuda
 
 --- C. Using Clang Directly for CUDA (clang++ Native CUDA Support) ---
 
 Clang supports compiling CUDA code directly without `nvcc`:
+
+Using C++20 (Recommended):
+    clang++ -O3 -std=c++20 --cuda-gpu-arch=sm_86 \
+        paq9-cuda.cu \
+        -L/opt/cuda/lib64 -lcudart_static -ldl -lrt -pthread \
+        -o paq9cuda
+
+Using C++23:
     clang++ -O3 -std=c++23 --cuda-gpu-arch=sm_86 \
         paq9-cuda.cu \
         -L/opt/cuda/lib64 -lcudart_static -ldl -lrt -pthread \
