@@ -532,9 +532,9 @@ __device__ int LZP::probability()
     int pc = predict_char();
     int pr = statemap->predict_next_bit(cxt);
     pr = stretch->operator()(pr);
-    pr = apm1->prediction(2048, pr * 2, hash2 * 256 + pc & 0xffff) * 3 + pr >> 2;
-    pr = apm2->prediction(2048, pr * 2, hash1 * (11 << 6) + pc & 0x3ffff) * 3 + pr >> 2;
-    pr = apm3->prediction(2048, pr * 2, hash1 * (7 << 4) + pc & 0xfffff) * 3 + pr >> 2;
+    pr = (apm1->prediction(2048, pr * 2, hash2 * 256 + pc & 0xffff) * 3 + pr) >> 2;
+    pr = (apm2->prediction(2048, pr * 2, hash1 * (11 << 6) + pc & 0x3ffff) * 3 + pr) >> 2;
+    pr = (apm3->prediction(2048, pr * 2, hash1 * (7 << 4) + pc & 0xfffff) * 3 + pr) >> 2;
     pr = squash->operator()(pr);
     return pr;
 }
@@ -692,7 +692,7 @@ __device__ int Predictor::predict_next_bit()
 
         // Set context pointers
         int pc = lzp[tid]->predict_char();        // mispredicted byte
-        int r = pc + 256 >> 8 - bcount == c0;     // c0 consistent with mispredicted byte?
+        int r = (pc + 256) >> (8 - bcount) == c0;     // c0 consistent with mispredicted byte?
         U32 c4 = lzp[tid]->context4();            // last 4 whole context bytes, shifted into LSB
         U32 c8 = (lzp[tid]->context8() << 4) - 1; // hash of last 7 bytes with 4 trailing 1 bits
         if ((bcount & 3) == 0)
@@ -723,11 +723,11 @@ __device__ int Predictor::predict_next_bit()
         {
             sp[i] = &cp[i][i < 4 ? c0 : nibble];
             int st = *sp[i];
-            pr = mix[i - 1]->prediction(pr, stretch->operator()(statemap[i]->predict_next_bit(st)), st + r) * 3 + pr >> 2;
+            pr = (mix[i - 1]->prediction(pr, stretch->operator()(statemap[i]->predict_next_bit(st)), st + r) * 3 + pr) >> 2;
         }
-        pr = apm1->prediction(512, pr * 2, c0 + pc * 256 & 0xffff) * 3 + pr >> 2; // Adjust prediction
-        pr = apm2->prediction(512, pr * 2, c4 << 8 & 0xff00 | c0) * 3 + pr >> 2;
-        pr = apm3->prediction(512, pr * 2, c4 * 3 + c0 & 0xffff) * 3 + pr >> 2;
+        pr = (apm1->prediction(512, pr * 2, c0 + pc * 256 & 0xffff) * 3 + pr) >> 2; // Adjust prediction
+        pr = (apm2->prediction(512, pr * 2, c4 << 8 & 0xff00 | c0) * 3 + pr) >> 2;
+        pr = (apm3->prediction(512, pr * 2, c4 * 3 + c0 & 0xffff) * 3 + pr) >> 2;
         return squash->operator()(pr);
     }
 }
@@ -779,7 +779,7 @@ public:
         int p = predictor[tid]->predict_next_bit();
         assert(p >= 0 && p < 4096);
         p += p < 2048;
-        U32 xmid = x1 + (x2 - x1 >> 12) * p + ((x2 - x1 & 0xfff) * p >> 12);
+        U32 xmid = x1 + ((x2 - x1) >> 12) * p + ((x2 - x1 & 0xfff) * p >> 12);
         assert(xmid >= x1 && xmid < x2);
         if (mode == DECOMPRESS)
             y = x <= xmid;
@@ -1487,7 +1487,7 @@ void compress(char *destination_file, char *source_file)
         for (size_t i = 0; i < num_of_current_thread; i++)
         {
             size_t current_B =
-                min(chunk_B, total_B - ((call_count * maximum_thread_per_device_call) + i) * chunk_B);
+                std::min(chunk_B, total_B - ((call_count * maximum_thread_per_device_call) + i) * chunk_B);
 
             if (src_file[i] != nullptr)
                 delete[] src_file[i];
