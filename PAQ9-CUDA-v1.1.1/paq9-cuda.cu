@@ -20,7 +20,7 @@ typedef unsigned int U32;
 #define COMPRESS 0
 #define DECOMPRESS 1
 #define endl std::endl
-#define GPU_LEVEL 6  // percentage of GPU memory to be used for compression/decompression
+#define GPU_LEVEL 8  // percentage of GPU memory to be used for compression/decompression
 #define HEAP_SIZE 128 // MB
 constexpr size_t MB = 1024 * 1024;
 #define Base_Memory_Level 19
