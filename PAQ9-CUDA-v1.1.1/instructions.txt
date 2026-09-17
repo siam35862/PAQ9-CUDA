@@ -94,4 +94,98 @@ Clang supports compiling CUDA code directly without `nvcc`:
   * `-arch=sm_86` : Ampere Consumer (RTX 3000 series, e.g., RTX 3060)
   * `-arch=sm_89` : Ada Lovelace (RTX 4000 series)
   * `-arch=sm_90` : Hopper (H100)
+
+================================================================================
+4. Running the Executables & Command-Line Parameters
+================================================================================
+
+Both `paq9cuda` and `paq9cpu` share an identical command-line interface.
+
+--------------------------------------------------------------------------------
+Command Syntax
+--------------------------------------------------------------------------------
+Compression:
+    ./<executable> -c [-<memory_level>] <destination_archive> [-<chunk_level>] <source_file>
+
+Decompression:
+    ./<executable> -d <source_archive> [<destination_file>]
+
+--------------------------------------------------------------------------------
+Parameter Explanations
+--------------------------------------------------------------------------------
+  -c
+      Selects Compression mode.
+
+  -d
+      Selects Decompression mode.
+
+  -<memory_level> (Optional, range: 1 to 11, default: 1)
+      Controls memory usage during compression:
+      * GPU (paq9cuda): Controls how much GPU VRAM is allocated for model state
+        and hash tables. Higher values utilize more VRAM.
+      * CPU (paq9cpu): Controls the scratch buffer and model memory allocated
+        per worker thread.
+      * Format: specify with a leading minus, e.g. -1, -6, -8, -11.
+
+  -<chunk_level> (Optional, range: 1 to 11, default: 1)
+      Controls compression ratio vs speed:
+      * Higher levels (e.g., -6 to -11): Yield higher compression ratio (smaller
+        file size), but execute slower.
+      * Lower levels (e.g., -1 to -3): Prioritize faster execution speed.
+      * Format: specify with a leading minus, e.g. -1, -6, -8, -11.
+
+  <destination_archive> (Compression)
+      Path to the output compressed archive to create (e.g. output.paq).
+
+  <source_file> (Compression)
+      Path to the original uncompressed file to be compressed.
+
+  <source_archive> (Decompression)
+      Path to the compressed archive to extract.
+
+  [<destination_file>] (Decompression, Optional)
+      Path where decompressed file will be written. If omitted, PAQ9 extracts
+      to the original file name stored in the archive header.
+
+--------------------------------------------------------------------------------
+Examples
+--------------------------------------------------------------------------------
+
+--- CUDA (paq9cuda) Run Examples ---
+
+1. Compress with default parameters (level 1):
+    ./paq9cuda -c archive.paq input.txt
+
+2. Compress with custom memory and chunk levels (e.g., memory 6, chunk 6):
+    ./paq9cuda -c -6 archive.paq -6 input.txt
+
+3. Compress with maximum compression (level 11):
+    ./paq9cuda -c -11 archive.paq -11 input.txt
+
+4. Decompress using original file name embedded in archive:
+    ./paq9cuda -d archive.paq
+
+5. Decompress to a specified destination file:
+    ./paq9cuda -d archive.paq restored_input.txt
+
+--- CPU (paq9cpu) Run Examples ---
+
+1. Compress with default parameters (level 1):
+    ./paq9cpu -c archive.paq input.txt
+
+2. Compress with custom memory and chunk levels (e.g., memory 6, chunk 6):
+    ./paq9cpu -c -6 archive.paq -6 input.txt
+
+3. Decompress using original file name embedded in archive:
+    ./paq9cpu -d archive.paq
+
+4. Decompress to a specified destination file:
+    ./paq9cpu -d archive.paq restored_input.txt
+
+--------------------------------------------------------------------------------
+Interoperability Note
+--------------------------------------------------------------------------------
+Archives produced by `paq9cuda` and `paq9cpu` are 100% bit-compatible:
+- An archive compressed with `paq9cuda` can be decompressed with `paq9cpu`.
+- An archive compressed with `paq9cpu` can be decompressed with `paq9cuda`.
 ================================================================================
