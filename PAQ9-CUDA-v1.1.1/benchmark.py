@@ -55,7 +55,7 @@ from pathlib import Path
 
 
 MIN_LEVEL = 1
-MAX_LEVEL = 11
+MAX_LEVEL = 6
 
 
 # Add a useful explanation when the script is started without the five file paths.
