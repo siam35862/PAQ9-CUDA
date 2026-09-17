@@ -681,7 +681,7 @@ __device__ int Predictor::predict_next_bit()
 
     if ((bc & 3) == 0)
     { // nibble boundary? update context pointers
-        pc = pc & -r;
+        int pcr = pc & -r;
         U32 c4p = c4 << 8;
 
         if (bc == 0)
@@ -707,11 +707,11 @@ __device__ int Predictor::predict_next_bit()
         if (lane == 7)
             cp[7] = hashtable->operator[]((c8 * 5 & 0xfffffc) + c0);
         if (lane == 8)
-            cp[8] = hashtable->operator[]((c8 * 11 & 0xffffff0) + c0 + pc * 13);
+            cp[8] = hashtable->operator[]((c8 * 11 & 0xffffff0) + c0 + pcr * 13);
         if (lane == 9)
-            cp[9] = hashtable->operator[]((lzp[chunk]->word0 * 5 + c0 + pc * 17));
+            cp[9] = hashtable->operator[]((lzp[chunk]->word0 * 5 + c0 + pcr * 17));
         if (lane == 10)
-            cp[10] = hashtable->operator[]((lzp[chunk]->word1 * 7 + lzp[chunk]->word0 * 11 + c0 + pc * 37));
+            cp[10] = hashtable->operator[]((lzp[chunk]->word1 * 7 + lzp[chunk]->word0 * 11 + c0 + pcr * 37));
 
         __syncwarp(mask); // make cp[] writes visible to all lanes before use
     }
