@@ -1,0 +1,97 @@
+================================================================================
+PAQ9 Compilation Instructions: paq9-cpu.cpp and paq9-cuda.cu
+================================================================================
+
+This document provides instructions for compiling `paq9-cpu.cpp` and
+`paq9-cuda.cu` using GCC and Clang, with explanations regarding C23 vs C++23.
+
+--------------------------------------------------------------------------------
+Important Note: C23 vs C++23
+--------------------------------------------------------------------------------
+- Both `paq9-cpu.cpp` and `paq9-cuda.cu` are written in C++ (utilizing C++
+  features such as classes, templates, STL containers, streams, and threads).
+- "C23" (-std=c23) is the ISO C language standard (ISO/IEC 9899:2024). C23 flags
+  are intended strictly for pure C compilers. Supplying `-std=c23` to a C++
+  compiler causes errors (e.g., Clang: "error: invalid argument '-std=c23' not
+  allowed with 'C++'") or compiler warnings (e.g., GCC: "option '-std=c23' is
+  valid for C/ObjC but not for C++").
+- "C++23" (-std=c++23 or -std=c++2b) is the ISO C++ standard (ISO/IEC 14882:2023).
+  This is the correct standard flag for both codebases.
+
+================================================================================
+1. Compiling paq9-cpu.cpp (CPU Multithreaded Version)
+================================================================================
+
+`paq9-cpu.cpp` is pure C++ using standard library threads (`std::thread`).
+
+--- A. Using GCC (g++ / gcc) with C++23 ---
+
+Recommended (using g++):
+    g++ -O3 -std=c++23 -pthread paq9-cpu.cpp -o paq9cpu
+
+If using the gcc driver directly (requires explicit C++ runtime linking):
+    gcc -O3 -std=c++23 -pthread paq9-cpu.cpp -lstdc++ -lm -o paq9cpu
+
+--- B. Using Clang (clang++ / clang) with C++23 ---
+
+Recommended (using clang++):
+    clang++ -O3 -std=c++23 -pthread paq9-cpu.cpp -o paq9cpu
+
+If using the clang driver directly (requires explicit C++ runtime linking):
+    clang -O3 -std=c++23 -pthread paq9-cpu.cpp -lstdc++ -lm -o paq9cpu
+
+Optional: Suppress shift precedence warnings on Clang:
+    clang++ -O3 -std=c++23 -pthread -Wno-shift-op-parentheses paq9-cpu.cpp -o paq9cpu
+
+================================================================================
+2. Compiling paq9-cuda.cu (CUDA GPU Version)
+================================================================================
+
+`paq9-cuda.cu` is written in CUDA C++ and requires NVIDIA's CUDA compiler (`nvcc`)
+or Clang's CUDA frontend to compile GPU kernels. NVCC delegates host C++ code
+compilation to a host compiler (GCC or Clang).
+
+--- A. Using NVCC with GCC Host Compiler (C++23) ---
+
+Default host compiler (GCC):
+    nvcc -O3 -std=c++23 -arch=native paq9-cuda.cu -o paq9cuda
+
+Explicitly specifying GCC (`g++`):
+    nvcc -O3 -std=c++23 -ccbin g++ -arch=native paq9-cuda.cu -o paq9cuda
+
+Note on GCC compatibility:
+    If your system has a very new GCC version (e.g., GCC 16) that is newer than
+    what your CUDA Toolkit supports, point `-ccbin` to a supported GCC version
+    (such as `g++-15` or `g++-14`):
+    nvcc -O3 -std=c++23 -ccbin g++-15 -arch=native paq9-cuda.cu -o paq9cuda
+
+--- B. Using NVCC with Clang Host Compiler (C++23) ---
+
+NVCC can use `clang++` as the host compiler:
+    nvcc -O3 -std=c++23 -ccbin clang++ -arch=native paq9-cuda.cu -o paq9cuda
+
+If Clang defaults to an unsupported GCC libstdc++ header version on your system:
+    nvcc -O3 -std=c++23 -ccbin clang++ -Xcompiler "--gcc-install-dir=/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0" -arch=native paq9-cuda.cu -o paq9cuda
+
+--- C. Using Clang Directly for CUDA (clang++ Native CUDA Support) ---
+
+Clang supports compiling CUDA code directly without `nvcc`:
+    clang++ -O3 -std=c++23 --cuda-gpu-arch=sm_86 \
+        paq9-cuda.cu \
+        -L/opt/cuda/lib64 -lcudart_static -ldl -lrt -pthread \
+        -o paq9cuda
+
+*(Note: Replace `sm_86` with your target GPU architecture, e.g., `sm_75`, `sm_80`,
+`sm_89`, or `sm_90`).*
+
+================================================================================
+3. Target GPU Architecture Options for NVCC (-arch)
+================================================================================
+- `-arch=native` : Automatically detects and targets the installed GPU in your system.
+- Specific GPU architecture flags:
+  * `-arch=sm_75` : Turing (RTX 2000 series, GTX 1600 series, T4)
+  * `-arch=sm_80` : Ampere Data Center (A100)
+  * `-arch=sm_86` : Ampere Consumer (RTX 3000 series, e.g., RTX 3060)
+  * `-arch=sm_89` : Ada Lovelace (RTX 4000 series)
+  * `-arch=sm_90` : Hopper (H100)
+================================================================================
