@@ -22,6 +22,23 @@
 //      instead of 1 * num_of_chunks. predictor[]/lzp[]/buffers[] arrays
 //      are still indexed by CHUNK id (unchanged), only the paq9_cuda
 //      launch config changes.
+//   6. PARTITIONED HASHTABLE (race fix): the 7 concurrent HashTable
+//      lookups issued by lanes 4-10 in Predictor::predict_next_bit() all
+//      shared ONE `HashTable<16>` table, so two lanes' (different) keys
+//      could hash into overlapping buckets and race on the same bytes
+//      (unsynchronized check-then-memset-then-write). This is fixed by
+//      giving each of the 7 lanes its own disjoint 1/8 slice of the
+//      table (partition index = lane-4, out of 8 power-of-two-sized
+//      partitions; partition 7 is never used, so 1/8 of the table's
+//      capacity is intentionally left unused to keep the partition size
+//      a power of two, preserving the original fast bit-mask hashing).
+//      See HashTable::operator[](U32, U32, U32) below. This makes the
+//      race structurally impossible (lanes touch disjoint memory) at
+//      the cost of each context type getting N/8 capacity instead of N,
+//      which can very slightly increase eviction/collision *within* a
+//      lane's own partition (not a race — just normal cache behavior)
+//      and so may very slightly affect compression ratio, but never
+//      correctness.
 //
 // IMPORTANT CAVEATS (read before using):
 //   - This trades single-chunk latency for a 32x increase in raw threads
@@ -342,6 +359,17 @@ public:
     __device__ HashTable(int n, U8 *table_ptr);
     __device__ ~HashTable();
     __device__ U8 *operator[](U32 i);
+    // Partitioned lookup (race fix): restricts this call to a disjoint
+    // 1/num_partitions slice of the table, selected by partition_idx.
+    // num_partitions MUST be a power of two (same invariant as N itself)
+    // so the local-index masking stays a simple bitmask. Calling this
+    // with different partition_idx values from different concurrently
+    // running lanes/threads guarantees they touch disjoint bytes of
+    // `table`, so no synchronization between them is required.
+    // NOTE: named method, not operator[] — C++ (pre-C++23) only allows
+    // operator[] to take exactly one argument, so a 3-arg overload of
+    // operator[] is illegal and nvcc will reject it (as it just did).
+    __device__ U8 *lookup_partitioned(U32 i, U32 partition_idx, U32 num_partitions);
 };
 
 template <int B>
@@ -375,6 +403,40 @@ __device__ U8 *HashTable<B>::operator[](U32 i)
     memset(table + i, 0, B);
     table[i] = chk;
     return table + i;
+}
+
+template <int B>
+__device__ U8 *HashTable<B>::lookup_partitioned(U32 i, U32 partition_idx, U32 num_partitions)
+{
+    assert((num_partitions & num_partitions - 1) == 0); // must be power of two
+    assert(N % num_partitions == 0);
+    U32 partition_size = N / num_partitions; // bytes; power of two since N and num_partitions are
+    assert(partition_size >= B * 4 && (partition_size & partition_size - 1) == 0);
+    U32 base = partition_idx * partition_size;
+
+    i *= 123456791;
+    i = i << 16 | i >> 16;
+    i *= 234567891;
+    int chk = i >> 24;
+    // Local index, masked within [0, partition_size) only — identical
+    // associative-slot logic to the unpartitioned operator[] above, just
+    // scoped to this partition. All XORs stay within the partition
+    // because partition_size is a power of two and a multiple of B.
+    U32 li = i * B & partition_size - B;
+    if (table[base + li] == chk)
+        return table + base + li;
+    if (table[base + (li ^ B)] == chk)
+        return table + base + (li ^ B);
+    if (table[base + (li ^ B * 2)] == chk)
+        return table + base + (li ^ B * 2);
+    if (table[base + li + 1] > table[base + (li + 1 ^ B)] || table[base + li + 1] > table[base + (li + 1 ^ B * 2)])
+        li ^= B;
+
+    if (table[base + li + 1] > table[base + (li + 1 ^ B ^ B * 2)])
+        li ^= B ^ B * 2;
+    memset(table + base + li, 0, B);
+    table[base + li] = chk;
+    return table + base + li;
 }
 
 template <int B>
@@ -641,9 +703,12 @@ __device__ void Predictor::update(int y)
 
 // Predict next bit — WARP-COOPERATIVE.
 // Lanes 4-10 each issue one of the 7 heavy HashTable::operator[] lookups
-// concurrently; lanes 0-10 each compute one StateMap::predict_next_bit()
-// concurrently. The Mix/APM chains remain serial on lane 0 because each
-// stage's output feeds the next.
+// concurrently, each into its OWN disjoint partition of the hash table
+// (see HashTable::operator[](U32, U32, U32) and CHANGES item 6 at the
+// top of the file) so they can never race with each other. Lanes 0-10
+// each compute one StateMap::predict_next_bit() concurrently. The
+// Mix/APM chains remain serial on lane 0 because each stage's output
+// feeds the next.
 __device__ int Predictor::predict_next_bit()
 {
     int tid = get_tid();
@@ -697,21 +762,29 @@ __device__ int Predictor::predict_next_bit()
         }
 
         // 7 heavy HashTable lookups — independent, issued concurrently
-        // on lanes 4-10.
+        // on lanes 4-10. Each lane hashes into its OWN 1/8 partition of
+        // the table (partition index = lane-4, of 8 power-of-two-sized
+        // partitions; partition 7 is intentionally never used) so no two
+        // lanes can ever touch the same bytes of `table`, regardless of
+        // what their (different) keys happen to hash to. This removes
+        // the unsynchronized check-then-memset-then-write race that
+        // existed when all 7 lanes shared operator[](U32) on the same
+        // full-size table.
+        constexpr U32 NUM_HT_PARTITIONS = 8; // power of two, only 7 used
         if (lane == 4)
-            cp[4] = hashtable->operator[]((c4p & 0xffff00) - c0);
+            cp[4] = hashtable->lookup_partitioned((c4p & 0xffff00) - c0, lane - 4, NUM_HT_PARTITIONS);
         if (lane == 5)
-            cp[5] = hashtable->operator[]((c4p & 0xffffff00) * 3 + c0);
+            cp[5] = hashtable->lookup_partitioned((c4p & 0xffffff00) * 3 + c0, lane - 4, NUM_HT_PARTITIONS);
         if (lane == 6)
-            cp[6] = hashtable->operator[](c4 * 7 + c0);
+            cp[6] = hashtable->lookup_partitioned(c4 * 7 + c0, lane - 4, NUM_HT_PARTITIONS);
         if (lane == 7)
-            cp[7] = hashtable->operator[]((c8 * 5 & 0xfffffc) + c0);
+            cp[7] = hashtable->lookup_partitioned((c8 * 5 & 0xfffffc) + c0, lane - 4, NUM_HT_PARTITIONS);
         if (lane == 8)
-            cp[8] = hashtable->operator[]((c8 * 11 & 0xffffff0) + c0 + pcr * 13);
+            cp[8] = hashtable->lookup_partitioned((c8 * 11 & 0xffffff0) + c0 + pcr * 13, lane - 4, NUM_HT_PARTITIONS);
         if (lane == 9)
-            cp[9] = hashtable->operator[]((lzp[chunk]->word0 * 5 + c0 + pcr * 17));
+            cp[9] = hashtable->lookup_partitioned((lzp[chunk]->word0 * 5 + c0 + pcr * 17), lane - 4, NUM_HT_PARTITIONS);
         if (lane == 10)
-            cp[10] = hashtable->operator[]((lzp[chunk]->word1 * 7 + lzp[chunk]->word0 * 11 + c0 + pcr * 37));
+            cp[10] = hashtable->lookup_partitioned((lzp[chunk]->word1 * 7 + lzp[chunk]->word0 * 11 + c0 + pcr * 37), lane - 4, NUM_HT_PARTITIONS);
 
         __syncwarp(mask); // make cp[] writes visible to all lanes before use
     }
